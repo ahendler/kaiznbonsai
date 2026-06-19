@@ -2,49 +2,88 @@
 
 ## Objective
 
-Configure the foundational database connection and establish a secure authentication system on the backend. This phase focuses entirely on Django configuration, setting up a robust custom User model, and exposing RESTful endpoints for user registration, login, and session/token management via Django Rest Framework (DRF).
+Configure the foundational database connection and establish a secure, production-grade authentication system on the backend. This phase covers Django settings hardening, a custom `User` model (email-first), and RESTful auth endpoints via DRF + `simplejwt`. The goal is a clean, fully tested auth layer that the frontend can integrate against in Phase 3.
+
+---
 
 ## Technical Specifications
 
 ### 1. Security & Environment Configuration
 
-- Install `python-dotenv` to manage environment variables.
-- Extract the hardcoded `SECRET_KEY` and `DEBUG` variables in `settings.py` and move them into a `.env` file.
-- Configure Django's `DATABASES` setting to connect to PostgreSQL using the `psycopg` driver, reading the credentials (`POSTGRES_DB`, `POSTGRES_USER`, etc.) dynamically from the environment.
+- Extract the hardcoded `SECRET_KEY` and `DEBUG` values from `settings.py` into the `.env` file managed by `python-dotenv`.
+- Configure `DATABASES` to connect to Postgres via `psycopg`, reading all credentials from the environment.
 
 ### 2. Custom User Model
 
-- **Important:** Before running _any_ initial migrations, create a custom `User` model by inheriting from Django's `AbstractUser` (this is the official Django best practice for future-proofing).
-- Update `settings.py` with `AUTH_USER_MODEL = 'your_app_name.User'`.
-- Run `python manage.py makemigrations` and `python manage.py migrate` to build the foundational database tables inside the Postgres container.
+Before running any initial migrations, define a custom `User` model inheriting from `AbstractUser`. This is non-negotiable: swapping the auth model after migrations exist is painful.
+
+**Design decisions:**
+- `email` is the primary login credential (`USERNAME_FIELD = "email"`).
+- `username` is retained for `AbstractUser` compatibility (`createsuperuser`, Django admin) but is not surfaced through the API. It is auto-populated from the email local part on programmatic creation via `RegisterSerializer`.
+- No roles or organization FK — data isolation is enforced at the queryset level (`filter(user=request.user)`), which is sufficient for the challenge scope.
+
+Update `settings.py` with `AUTH_USER_MODEL = "accounts.User"`. Run migrations before any other app models are defined.
 
 ### 3. Authentication Endpoints (DRF & JWT)
 
-- Implement JSON Web Token (JWT) authentication using `djangorestframework-simplejwt`.
-- Implement serializers and views for the following endpoints:
-  - `POST /api/v1/auth/register/`: Accepts email + password, creates a new user.
-  - `POST /api/v1/auth/token/` (Login): Authenticates and returns access + refresh tokens.
-  - `POST /api/v1/auth/token/refresh/`: Exchanges a refresh token for a new access token.
-  - `GET /api/v1/auth/me/`: Returns the currently authenticated user's details.
-  - _Logout endpoint deferred to Phase 3 — requires `simplejwt` token blacklist, which is set up alongside frontend integration._
-- Configure DRF's `DEFAULT_AUTHENTICATION_CLASSES` to use `JWTAuthentication` in `settings.py`.
-- Configure DRF's `DEFAULT_PERMISSION_CLASSES` in `settings.py` to `IsAuthenticated`, ensuring all APIs are protected by default unless explicitly opened.
+Use `djangorestframework-simplejwt` for JWT issuance. Configure `DEFAULT_AUTHENTICATION_CLASSES` to `JWTAuthentication` and `DEFAULT_PERMISSION_CLASSES` to `IsAuthenticated` in `settings.py` so all endpoints are protected by default.
 
-### 4. Testing
+#### Endpoints
 
-- Configure `pytest` and `pytest-django`.
-- Write unit tests to verify:
-  - Successful user registration.
-  - Rejection of duplicate emails/usernames during registration.
-  - Successful login returning a token.
-  - Rejection of invalid login credentials.
+| Method | URL | Auth | Description |
+|--------|-----|------|-------------|
+| `POST` | `/api/v1/auth/register/` | Public | Creates a new user. Accepts `email` + `password` + `password_confirm`. |
+| `POST` | `/api/v1/auth/login/` | Public | Authenticates and returns tokens + user payload (see below). |
+| `POST` | `/api/v1/auth/token/refresh/` | Public | Exchanges refresh token for a new access token. |
+| `POST` | `/api/v1/auth/logout/` | Authenticated | Blacklists the refresh token and clears the cookie. |
+| `GET` | `/api/v1/auth/me/` | Authenticated | Returns the authenticated user's profile. |
+
+#### Token Transport Strategy
+
+The refresh token is stored in an **httpOnly cookie** — not returned in the JSON response body. This prevents XSS attacks from ever reading the refresh token via JavaScript. The access token is returned in the JSON body and held in memory by the frontend.
+
+The login response body shape:
+
+```json
+{
+  "access": "<short-lived JWT>",
+  "user": { "id": 1, "email": "...", "first_name": "...", "last_name": "..." }
+}
+```
+
+Embedding the user payload in the login response avoids an immediate `/me/` round-trip on app load.
+
+The `RefreshView` reads the refresh token from the cookie first, falling back to the request body. This handles environments where cross-domain cookies are blocked (Safari ITP, privacy browsers).
+
+The `LogoutView` blacklists the refresh token via `simplejwt`'s token blacklist and deletes the cookie. `INSTALLED_APPS` must include `rest_framework_simplejwt.token_blacklist`.
+
+#### RegisterView
+
+`AllowAny`. Accepts `email`, `password`, and `password_confirm`. `RegisterSerializer` validates password match and strength, auto-generates `username` from the email local part, and calls `User.objects.create_user()`.
+
+#### MeView
+
+Read: `GET` returns a `UserSerializer` with read-only fields. No write surface on this endpoint in this phase.
+
+### 4. Test Layout
+
+Tests live in `apps/accounts/tests/`. Split by concern:
+
+- `test_registration.py` — covers: successful registration, duplicate email rejection, weak password rejection, mismatched passwords.
+- `test_auth.py` — covers: successful login (returns access + user, refresh in cookie), wrong password returns 401, `/me/` without token returns 401, `/me/` with valid token returns user data, logout blacklists token.
+
+Fixtures use plain `pytest` fixtures with `User.objects.create_user()` — no factory libraries.
+
+---
 
 ## Acceptance Criteria
 
-- [ ] `SECRET_KEY` is completely removed from source code and loaded via `.env`.
-- [ ] Django successfully connects to the Dockerized PostgreSQL database.
-- [ ] Running `python manage.py migrate` executes successfully and clears the "unapplied migrations" warning.
-- [ ] A POST request to `/api/v1/auth/register/` creates a new user (email + password).
-- [ ] A POST request to `/api/v1/auth/token/` with valid email + password returns access and refresh tokens.
-- [ ] An unauthenticated GET request to `/api/v1/auth/me/` returns a `401 Unauthorized` status.
-- [x] Running `pytest` passes all 6 authentication test cases.
+- [ ] `SECRET_KEY` is not present in any committed source file.
+- [ ] Django connects to the Dockerized Postgres container successfully.
+- [ ] `python manage.py migrate` runs clean with no warnings.
+- [ ] `POST /api/v1/auth/register/` creates a user and returns `201`.
+- [ ] `POST /api/v1/auth/login/` returns `{ access, user }` and sets an httpOnly refresh cookie.
+- [ ] `GET /api/v1/auth/me/` without a token returns `401`.
+- [ ] `GET /api/v1/auth/me/` with a valid token returns the user's profile.
+- [ ] `POST /api/v1/auth/logout/` blacklists the token and clears the cookie.
+- [ ] All `pytest` tests in `apps/accounts/tests/` pass.

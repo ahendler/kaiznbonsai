@@ -15,7 +15,8 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile        # dev image — includes pytest and dev toolchain
+
     container_name: kaiznbonsai_backend
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
