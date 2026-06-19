@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'apps.accounts',
 ]
 
@@ -56,6 +57,25 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
 }
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # Enable refresh token rotation — each refresh call issues a new refresh token
+    # and blacklists the old one.
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    # Cookie settings for the httpOnly refresh token.
+    'AUTH_COOKIE': 'refresh_token',
+    'AUTH_COOKIE_HTTP_ONLY': True,
+    # SameSite=Lax is sufficient for same-origin SPA; change to 'None' + Secure=True
+    # if the frontend is served from a different domain.
+    'AUTH_COOKIE_SAMESITE': 'Lax',
+    'AUTH_COOKIE_SECURE': False,  # Set to True in production (HTTPS only)
+}
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
