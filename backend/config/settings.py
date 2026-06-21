@@ -45,7 +45,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'simple_history',
     'apps.accounts',
+    'apps.core',
+    'apps.inventory',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -57,7 +60,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.CursorPagination',
+    'DEFAULT_PAGINATION_CLASS': 'apps.core.pagination.CreatedAtCursorPagination',
     'PAGE_SIZE': 20,
 }
 

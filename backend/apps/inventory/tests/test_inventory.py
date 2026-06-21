@@ -93,7 +93,7 @@ class TestProductTenantIsolation:
     def test_user_only_sees_own_products(self, client_a, product_a, product_b):
         r = client_a.get(PRODUCTS_URL)
         assert r.status_code == status.HTTP_200_OK
-        ids = [p['id'] for p in r.data]
+        ids = [p['id'] for p in r.data['results']]
         assert product_a.id in ids
         assert product_b.id not in ids
 
@@ -127,7 +127,7 @@ class TestStockTenantIsolation:
         batch_b = make_stock(user_b, product_b, 200)
         r = client_a.get(STOCKS_URL)
         assert r.status_code == status.HTTP_200_OK
-        ids = [str(s['id']) for s in r.data]
+        ids = [str(s['id']) for s in r.data['results']]
         assert str(batch_a.id) in ids
         assert str(batch_b.id) not in ids
 
