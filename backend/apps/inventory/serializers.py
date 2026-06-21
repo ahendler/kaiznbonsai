@@ -63,3 +63,25 @@ class StockSerializer(serializers.ModelSerializer):
             if value.user_id != request.user.id:
                 raise serializers.ValidationError("You can only add stock to your own products.")
         return value
+
+    def validate(self, data):
+        """
+        Enforce business rules for stock editing.
+        """
+        if self.instance: # Update operation
+            is_consumed = self.instance.current_quantity < self.instance.initial_quantity
+            
+            # 1. Block initial_quantity edits if consumed
+            new_initial_qty = data.get('initial_quantity', self.instance.initial_quantity)
+            if is_consumed and new_initial_qty != self.instance.initial_quantity:
+                raise serializers.ValidationError({
+                    "initial_quantity": "Cannot edit initial quantity because this batch has been partially or fully consumed."
+                })
+            
+            # 2. current_quantity is read-only
+            if 'current_quantity' in data and data['current_quantity'] != self.instance.current_quantity:
+                raise serializers.ValidationError({
+                    "current_quantity": "Current quantity is read-only and cannot be manually updated here."
+                })
+
+        return data

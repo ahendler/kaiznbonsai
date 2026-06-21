@@ -12,6 +12,8 @@ import {
   Paper,
   Badge,
   Center,
+  Tooltip,
+  Box,
 } from '@mantine/core'
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -70,8 +72,12 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['products'] })
       form.reset()
     },
-    onError: () => {
-      notifications.show({ title: 'Error', message: 'Failed to add batch. Check your inputs.', color: 'red' })
+    onError: (error: any) => {
+      if (error.response?.data && typeof error.response.data === 'object') {
+        form.setErrors(error.response.data)
+      } else {
+        notifications.show({ title: 'Error', message: 'Failed to add batch. Check your inputs.', color: 'red' })
+      }
     }
   })
 
@@ -82,8 +88,9 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
     },
-    onError: () => {
-      notifications.show({ title: 'Error', message: 'Failed to delete batch.', color: 'red' })
+    onError: (error: any) => {
+      const detail = error.response?.data?.detail || 'Failed to delete batch.'
+      notifications.show({ title: 'Error', message: detail, color: 'red' })
     }
   })
 
@@ -109,8 +116,19 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setEditingStockId(null)
     },
-    onError: () => {
-      notifications.show({ title: 'Error', message: 'Failed to update batch', color: 'red' })
+    onError: (error: any) => {
+      const data = error.response?.data
+      let message = 'Failed to update batch'
+      if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0]
+        const firstError = data[firstKey]
+        if (Array.isArray(firstError)) {
+          message = `${firstKey}: ${firstError[0]}`
+        } else if (typeof firstError === 'string') {
+          message = firstError
+        }
+      }
+      notifications.show({ title: 'Error', message, color: 'red' })
     }
   })
 
@@ -219,6 +237,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               disabled={isConsumed}
                               hideControls
                               styles={{ input: { width: 80 } }}
+                              min={0}
                             />
                           ) : (
                             <Text>{parseFloat(stock.initial_quantity)}</Text>
@@ -238,6 +257,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               decimalScale={2}
                               hideControls
                               styles={{ input: { width: 80 } }}
+                              min={0}
                             />
                           ) : (
                             <Text>${parseFloat(stock.unit_cost).toFixed(2)}</Text>
@@ -305,18 +325,33 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               >
                                 <IconEdit size={16} />
                               </ActionIcon>
-                              {!isConsumed && (
-                                <ActionIcon
-                                  color="red"
-                                  variant="subtle"
-                                  onClick={() => {
-                                    if (confirm('Are you sure you want to remove this batch?')) {
-                                      deleteMutation.mutate(stock.id)
-                                    }
-                                  }}
-                                >
-                                  <IconTrash size={16} />
-                                </ActionIcon>
+                              {isConsumed ? (
+                                <Tooltip label="Cannot delete a partially or fully consumed batch">
+                                  <Box display="inline-block">
+                                    <ActionIcon
+                                      color="gray"
+                                      variant="subtle"
+                                      disabled
+                                      style={{ pointerEvents: 'none' }}
+                                    >
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Box>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip label="Remove batch">
+                                  <ActionIcon
+                                    color="red"
+                                    variant="subtle"
+                                    onClick={() => {
+                                      if (confirm('Are you sure you want to remove this batch?')) {
+                                        deleteMutation.mutate(stock.id)
+                                      }
+                                    }}
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
                               )}
                             </Group>
                           )}

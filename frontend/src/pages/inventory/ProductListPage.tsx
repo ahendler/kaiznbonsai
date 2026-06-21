@@ -14,6 +14,7 @@ import {
   Tooltip,
   CopyButton,
   Modal,
+  Box,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -252,13 +253,30 @@ export default function ProductListPage() {
                       >
                         <IconEdit size={16} />
                       </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => setProductToDelete(product)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      {parseFloat(product.total_stock || '0') > 0 ? (
+                        <Tooltip label="Cannot delete a product with active stock batches. Remove all stock first.">
+                          <Box display="inline-block">
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              disabled
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Box>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip label="Delete product">
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => setProductToDelete(product)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
