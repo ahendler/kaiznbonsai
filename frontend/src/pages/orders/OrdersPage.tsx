@@ -1,6 +1,7 @@
 import { Container, Title, Tabs } from '@mantine/core';
 import { IconTruckDelivery, IconCash } from '@tabler/icons-react';
 import { PurchaseOrderTable } from '../../components/orders/PurchaseOrderTable';
+import { SalesOrderTable } from '../../components/orders/SalesOrderTable';
 
 export default function OrdersPage() {
   return (
@@ -23,9 +24,8 @@ export default function OrdersPage() {
           <PurchaseOrderTable />
         </Tabs.Panel>
 
-        <Tabs.Panel value="sales">
-          {/* SalesOrderTable goes here later */}
-          <p>Sales Orders list goes here.</p>
+        <Tabs.Panel value="sales" pt="md">
+          <SalesOrderTable />
         </Tabs.Panel>
       </Tabs>
     </Container>
