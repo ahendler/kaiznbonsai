@@ -64,6 +64,7 @@
 - Implement metric cards showing overall Revenue, Costs, and Profit.
 - Build visualizations (charts or tables) for individual product profit margins.
 - Integrate backend financial APIs with the frontend UI.
+- Create a Django management command to generate realistic synthetic data via system actions.
 
 ## Phase 10: Final Polish, Testing & Deployment
 
