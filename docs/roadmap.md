@@ -56,7 +56,7 @@
 - Implement backend selectors/properties to calculate total purchase costs and sales revenue.
 - Implement backend logic to calculate profit and profit margins per product and overall.
 - Create specific API endpoints or augment existing ones to serve aggregated financial data.
-- Write rigorous unit tests (`pytest`) for all financial calculations.
+- Write unit tests (`pytest`) for all financial calculations.
 
 ## Phase 9: Financial Dashboard UI
 
@@ -67,8 +67,8 @@
 
 ## Phase 10: Final Polish, Testing & Deployment
 
-- Conduct end-to-end manual testing of the entire flow.
-- Apply high-fidelity UI/UX polish (responsive design checks, loading states, empty states).
+- Conduct end-to-end testing of the entire flow.
+- Apply UI/UX polish (responsive design checks, loading states, empty states).
 - Finalize API documentation and the project README.
 - Prepare the application for cloud deployment.
 

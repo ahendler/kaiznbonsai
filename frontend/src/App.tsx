@@ -7,6 +7,7 @@ import RegisterPage from '@/pages/auth/RegisterPage'
 import AppLayout from '@/components/layout/AppLayout'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import ProductListPage from '@/pages/inventory/ProductListPage'
+import OrdersPage from '@/pages/orders/OrdersPage'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { state } = useAuth()
@@ -61,6 +62,7 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="inventory/products" element={<ProductListPage />} />
+        <Route path="orders" element={<OrdersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

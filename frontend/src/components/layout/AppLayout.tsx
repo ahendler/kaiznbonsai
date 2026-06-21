@@ -23,6 +23,7 @@ import {
   IconLogout,
   IconUser,
   IconBell,
+  IconReceipt,
 } from '@tabler/icons-react'
 import { useAuth } from '@/context/AuthContext'
 
@@ -35,6 +36,7 @@ export default function AppLayout() {
 
   const navItems = [
     { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
+    { label: 'Orders', icon: IconReceipt, path: '/orders' },
     { label: 'History', icon: IconHistory, path: '/history' },
     { label: 'Settings', icon: IconSettings, path: '/settings' },
   ]
