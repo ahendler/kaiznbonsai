@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.core',
     'apps.inventory',
+    'apps.orders',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'

@@ -22,4 +22,5 @@ urlpatterns = [
     # All API routes are versioned under /api/v1/
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('api/v1/inventory/', include('apps.inventory.urls')),
+    path('api/v1/orders/', include('apps.orders.urls')),
 ]

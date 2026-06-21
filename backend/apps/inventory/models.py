@@ -30,6 +30,7 @@ class Stock(TenantOwnedModel):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="stock_batches")
     lot_code = models.CharField(max_length=100, blank=True, default="")
     best_before = models.DateField(null=True, blank=True)
+    purchase_order_item = models.ForeignKey('orders.PurchaseOrderItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_batches')
     initial_quantity = models.DecimalField(max_digits=12, decimal_places=3)
     current_quantity = models.DecimalField(max_digits=12, decimal_places=3)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)

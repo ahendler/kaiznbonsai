@@ -56,7 +56,7 @@ To ensure the backend is robust and testable without the complexity of DRF Seria
 *   `confirm_purchase_order(order) -> None`
     *   *Logic:* Iterates over `PurchaseOrderItem`s and creates new `Stock` batches with `initial_quantity = quantity`, `current_quantity = quantity`, and `unit_cost = unit_cost`. Transitions status to `CONFIRMED`.
 *   `cancel_purchase_order(order) -> None`
-    *   *Logic:* Finds the `Stock` batches created by this order and deletes them (or errors out if the stock has already been consumed by a sales order). Transitions status to `CANCELLED`.
+    *   *Logic:* Finds the `Stock` batches created by this order. If any of the stock has been partially or fully consumed (`current_quantity < initial_quantity`), it raises a `ValidationError` protecting the financial records. If untouched, it safely deletes the physical stock and transitions status to `CANCELLED`.
 
 #### Sales Order Commands
 *   `create_sales_order(user, data) -> SalesOrder`
