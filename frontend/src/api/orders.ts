@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from './client';
 import type { Product, PaginatedResponse } from './inventory';
 
@@ -106,9 +106,15 @@ const orderApi = {
 
 // HOOKS
 export const usePurchaseOrders = () => {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['purchase-orders'],
-    queryFn: orderApi.getPurchaseOrders,
+    queryFn: ({ pageParam }) => orderApi.getPurchaseOrders(pageParam as string | null),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.next) return null;
+      const url = new URL(lastPage.next);
+      return url.searchParams.get('cursor');
+    },
   });
 };
 
@@ -146,9 +152,15 @@ export const useCancelPurchaseOrder = () => {
 };
 
 export const useSalesOrders = () => {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['sales-orders'],
-    queryFn: orderApi.getSalesOrders,
+    queryFn: ({ pageParam }) => orderApi.getSalesOrders(pageParam as string | null),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.next) return null;
+      const url = new URL(lastPage.next);
+      return url.searchParams.get('cursor');
+    },
   });
 };
 

@@ -7,14 +7,14 @@ import { SalesOrderDrawer } from './SalesOrderDrawer';
 import { useDisclosure } from '@mantine/hooks';
 
 export function SalesOrderTable() {
-  const { data: ordersData, isLoading } = useSalesOrders();
+  const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useSalesOrders();
   const confirmMutation = useConfirmSalesOrder();
   const cancelMutation = useCancelSalesOrder();
   const [opened, { open, close }] = useDisclosure(false);
   const [actionOrder, setActionOrder] = useState<{ id: number, action: 'confirm' | 'cancel' } | null>(null);
   const [viewOrder, setViewOrder] = useState<any | null>(null);
 
-  const orders = ordersData?.results || [];
+  const orders = ordersData?.pages.flatMap(page => page.results) || [];
 
   if (isLoading) return <Center p="xl"><Loader /></Center>;
 
@@ -110,6 +110,14 @@ export function SalesOrderTable() {
         </Table.Thead>
         <Table.Tbody>{rows?.length ? rows : <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" ta="center">No sales orders found.</Text></Table.Td></Table.Tr>}</Table.Tbody>
       </Table>
+      
+      {hasNextPage && (
+        <Center mt="md">
+          <Button variant="light" onClick={() => fetchNextPage()} loading={isFetchingNextPage}>
+            Load More Orders
+          </Button>
+        </Center>
+      )}
 
       <SalesOrderDrawer opened={opened} onClose={close} />
 
