@@ -35,6 +35,7 @@
 - Implement Product creation and editing modal/forms.
 - Build the Stock management interface to visualize and manually adjust stock levels.
 - Integrate Tanstack Query for data fetching and mutations.
+- Implement stock deletion and validation edge cases in the UI (block deletion/initial qty edit if units are consumed).
 
 ## Phase 6: Order Management Data Modeling & API
 

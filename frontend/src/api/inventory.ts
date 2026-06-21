@@ -46,12 +46,16 @@ export interface StockCreatePayload {
   product: string
   lot_code?: string
   initial_quantity: string
+  current_quantity: string
   unit_cost: string
   best_before?: string | null
 }
 
 export interface StockUpdatePayload {
+  lot_code?: string
+  initial_quantity?: string
   current_quantity?: string
+  unit_cost?: string
   best_before?: string | null
 }
 

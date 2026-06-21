@@ -9,7 +9,7 @@ class TenantOwnedModel(models.Model):
     """
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # Do we want this? Business and compliance decision.
         related_name='%(class)ss' # e.g. user.products
     )
     created_at = models.DateTimeField(auto_now_add=True)

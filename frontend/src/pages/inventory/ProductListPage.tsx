@@ -13,9 +13,11 @@ import {
   Stack,
   Tooltip,
   CopyButton,
+  Modal,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { notifications } from '@mantine/notifications'
 import { useIntersection } from '@mantine/hooks'
 import {
   IconPlus,
@@ -25,10 +27,11 @@ import {
   IconCopy,
   IconCheck,
 } from '@tabler/icons-react'
-import { listProducts } from '@/api/inventory'
+import { listProducts, deleteProduct } from '@/api/inventory'
 import type { Product } from '@/api/inventory'
 import { useDisclosure } from '@mantine/hooks'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
+import StockDrawer from '@/components/inventory/StockDrawer'
 
 const CopyAction = ({ value }: { value: string }) => (
   <CopyButton value={value} timeout={2000}>
@@ -83,8 +86,31 @@ export default function ProductListPage() {
   })
 
   // Modal state
+  const queryClient = useQueryClient()
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+  const [stockProduct, setStockProduct] = useState<Product | null>(null)
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteProduct(id),
+    onSuccess: () => {
+      notifications.show({
+        title: 'Success',
+        message: 'Product deleted successfully',
+        color: 'green',
+      })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      setProductToDelete(null)
+    },
+    onError: () => {
+      notifications.show({
+        title: 'Error',
+        message: 'Failed to delete product. It may have existing stock batches.',
+        color: 'red',
+      })
+    },
+  })
 
   const handleAddProduct = () => {
     setEditingProduct(null)
@@ -156,7 +182,7 @@ export default function ProductListPage() {
         </Center>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <Table verticalSpacing="sm" striped highlightOnHover>
+          <Table verticalSpacing="sm" striped highlightOnHover withColumnBorders>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th style={{ width: '100%' }}>Name</Table.Th>
@@ -215,7 +241,7 @@ export default function ProductListPage() {
                         variant="light"
                         color="green"
                         size="xs"
-                        onClick={() => console.log('View Stock', product.id)}
+                        onClick={() => setStockProduct(product)}
                       >
                         View Stock
                       </Button>
@@ -229,7 +255,7 @@ export default function ProductListPage() {
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        onClick={() => console.log('Delete', product.id)}
+                        onClick={() => setProductToDelete(product)}
                       >
                         <IconTrash size={16} />
                       </ActionIcon>
@@ -255,6 +281,52 @@ export default function ProductListPage() {
         opened={modalOpened}
         onClose={closeModal}
         product={editingProduct}
+      />
+
+      <Modal
+        opened={!!productToDelete}
+        onClose={() => setProductToDelete(null)}
+        title={
+          <Badge color="red" variant="light" size="lg" radius="sm">
+            Delete Product
+          </Badge>
+        }
+        centered
+      >
+        <Stack gap="xs" mb="lg">
+          <Text size="sm">Are you sure you want to delete:</Text>
+          <div style={{ overflow: 'hidden' }}>
+            <TruncatedTextWithTooltip text={productToDelete?.name || ''} fw={600} />
+          </div>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone (for now).
+          </Text>
+          {parseFloat(productToDelete?.total_stock || '0') > 0 && (
+            <Text size="sm" c="red" mt="sm">
+              You cannot delete a product that currently has stock. Please remove all stock batches first.
+            </Text>
+          )}
+        </Stack>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setProductToDelete(null)} disabled={deleteMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            loading={deleteMutation.isPending}
+            disabled={parseFloat(productToDelete?.total_stock || '0') > 0}
+            onClick={() => productToDelete && deleteMutation.mutate(productToDelete.id)}
+          >
+            Delete
+          </Button>
+        </Group>
+      </Modal>
+
+      <StockDrawer
+        opened={!!stockProduct}
+        onClose={() => setStockProduct(null)}
+        productId={stockProduct?.id || ''}
+        productName={stockProduct?.name || ''}
       />
     </Container>
   )

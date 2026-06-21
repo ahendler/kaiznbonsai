@@ -150,11 +150,14 @@ On submit: `POST /api/v1/inventory/stocks/` → invalidates `['stocks', productI
 
 ### Edit Batch
 
-A compact inline edit form (PATCH) to correct `current_quantity` or `best_before` after a data entry error.
+A compact inline edit form (PATCH) to correct batch details (lot code, initial quantity, cost, dates).
+- Validation (Frontend & Backend): `initial_quantity` cannot be edited if the batch is partially or fully consumed (`current_quantity < initial_quantity`). `current_quantity` is read-only.
 
 ### Delete Batch
 
-Sends `DELETE /api/v1/inventory/stocks/<id>/`. Shows a confirmation step. On success, invalidates both `['stocks', productId]` and `['products']`.
+Sends `DELETE /api/v1/inventory/stocks/<id>/`. Shows a confirmation step.
+- Validation (Frontend & Backend): Deletion is completely blocked in the UI, and rejected by the API (`409 Conflict`), if the batch has been consumed (`current_quantity < initial_quantity`).
+On success, invalidates both `['stocks', productId]` and `['products']`.
 
 ---
 
@@ -222,7 +225,9 @@ API errors are mapped back into the form state (`form.setErrors()`), so field-le
 - [ ] Stock drawer opens and lists all batches for a product.
 - [ ] Add batch form uses native validation before submitting.
 - [ ] Add batch form submits and the drawer list + product `total_stock` both refresh.
-- [ ] Edit batch (PATCH on `current_quantity`) works inline.
+- [ ] Edit batch inline form supports all fields except current quantity.
+- [ ] Edit batch disables initial quantity edit if consumed.
 - [ ] Delete batch removes the row and updates `total_stock` in the background table.
+- [ ] Delete batch action is hidden/blocked if the batch is consumed.
 - [ ] All mutations show success or error toasts.
 - [ ] JPT drawer button opens a left-side drawer with a placeholder UI.
