@@ -10,6 +10,7 @@ from apps.inventory.serializers import ProductSerializer, StockSerializer
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """
@@ -47,6 +48,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 class StockViewSet(viewsets.ModelViewSet):
     serializer_class = StockSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """
@@ -60,3 +62,15 @@ class StockViewSet(viewsets.ModelViewSet):
         Note: The serializer already validated that the chosen Product belongs to this user.
         """
         serializer.save(user=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Block deletion if the batch has been partially or fully consumed.
+        """
+        stock = self.get_object()
+        if stock.current_quantity < stock.initial_quantity:
+            return Response(
+                {"detail": "Cannot delete a partially or fully consumed batch."},
+                status=status.HTTP_409_CONFLICT
+            )
+        return super().destroy(request, *args, **kwargs)

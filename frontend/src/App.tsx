@@ -4,6 +4,9 @@ import type { ReactNode } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import LoginPage from '@/pages/auth/LoginPage'
 import RegisterPage from '@/pages/auth/RegisterPage'
+import AppLayout from '@/components/layout/AppLayout'
+import DashboardPage from '@/pages/dashboard/DashboardPage'
+import ProductListPage from '@/pages/inventory/ProductListPage'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { state } = useAuth()
@@ -48,15 +51,17 @@ export default function App() {
           </PublicRoute>
         }
       />
-      {/* Placeholder — replaced with AppShell + dashboard in Phase 5 */}
       <Route
         path="/"
         element={
           <ProtectedRoute>
-            <Center h="100vh">Authenticated ✓</Center>
+            <AppLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="inventory/products" element={<ProductListPage />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

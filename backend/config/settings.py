@@ -45,10 +45,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'simple_history',
     'apps.accounts',
     'apps.core',
     'apps.inventory',
-    'simple_history',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -60,6 +60,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_PAGINATION_CLASS': 'apps.core.pagination.CreatedAtCursorPagination',
+    'PAGE_SIZE': 20,
 }
 
 from datetime import timedelta
@@ -90,7 +92,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'simple_history.middleware.HistoryRequestMiddleware',  # tracks which user triggered each history record
 ]
 
 # CORS — allow the React dev server to reach the backend.
