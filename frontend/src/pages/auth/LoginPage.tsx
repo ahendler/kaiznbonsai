@@ -10,6 +10,8 @@ import {
   Container,
   Stack,
   Alert,
+  Image,
+  Center,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { notifications } from '@mantine/notifications'
@@ -51,7 +53,9 @@ export default function LoginPage() {
 
   return (
     <Container size={440} my={80}>
-      <Title ta="center" mb="md">Welcome back</Title>
+      <Center mb="xl">
+        <Image src="/logo-letter.png" alt="KaiznBonsai" h={50} w="auto" fit="contain" />
+      </Center>
 
       <Paper withBorder shadow="md" p="xl" radius="md">
         <form onSubmit={form.onSubmit(handleSubmit)}>
