@@ -68,11 +68,10 @@
 
 ## Phase 10: Final Polish, Testing & Deployment
 
-- Conduct end-to-end testing of the entire flow.
+- Cloud deployment.
 - Conduct end-to-end testing.
 - Apply UI refinements (responsive design, loading states, empty states).
 - Finalize API documentation and project README.
-- Prepare application for cloud deployment.
 
 ## Phase 11: AI Assistant
 
