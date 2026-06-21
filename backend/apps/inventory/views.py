@@ -10,6 +10,7 @@ from apps.inventory.serializers import ProductSerializer, StockSerializer
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """
@@ -47,6 +48,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 class StockViewSet(viewsets.ModelViewSet):
     serializer_class = StockSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         """
