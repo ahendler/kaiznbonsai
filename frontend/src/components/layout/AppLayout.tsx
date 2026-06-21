@@ -18,7 +18,6 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   IconBoxSeam,
   IconHistory,
-  IconSettings,
   IconMessageChatbot,
   IconLogout,
   IconUser,
@@ -41,7 +40,6 @@ export default function AppLayout() {
     { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
     { label: 'Orders', icon: IconReceipt, path: '/orders' },
     { label: 'History', icon: IconHistory, path: '/history' },
-    { label: 'Settings', icon: IconSettings, path: '/settings' },
   ]
 
   return (

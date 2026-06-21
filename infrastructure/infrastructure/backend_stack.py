@@ -109,8 +109,14 @@ class BackendStack(Stack):
                     option_name="DEBUG",
                     value="False"
                 ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="CORS_ALLOWED_ORIGINS",
+                    value="https://d1zfq2u3duxnio.cloudfront.net"
+                ),
                 # Note: Postgres configuration is internal to the docker-compose network on the instance,
                 # but we could expose it via environment variables here if needed.
+                # Replace value with real domain
             ]
         )
         env.add_dependency(app_version)
