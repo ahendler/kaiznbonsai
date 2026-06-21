@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/deploy
   workflow_dispatch:
     paths:
       - "backend/**"
