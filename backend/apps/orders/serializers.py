@@ -18,7 +18,7 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PurchaseOrder
-        fields = ['id', 'status', 'order_date', 'created_at', 'updated_at', 'items', 'items_data']
+        fields = ['id', 'title', 'status', 'order_date', 'created_at', 'updated_at', 'items', 'items_data']
         read_only_fields = ['status', 'order_date', 'created_at', 'updated_at']
 
 
@@ -38,5 +38,5 @@ class SalesOrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SalesOrder
-        fields = ['id', 'status', 'order_date', 'created_at', 'updated_at', 'items', 'items_data']
+        fields = ['id', 'title', 'status', 'order_date', 'created_at', 'updated_at', 'items', 'items_data']
         read_only_fields = ['status', 'order_date', 'created_at', 'updated_at']

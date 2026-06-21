@@ -5,7 +5,7 @@ from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, Sal
 from apps.inventory.models import Stock
 
 @transaction.atomic
-def create_purchase_order(user, items_data: list, order_date=None) -> PurchaseOrder:
+def create_purchase_order(user, items_data: list, title: str = None, order_date=None) -> PurchaseOrder:
     """
     Creates a new PurchaseOrder in DRAFT status.
     items_data: [{'product_id': int, 'quantity': float, 'unit_cost': float, 'lot_code': str, 'best_before': date}]
@@ -15,6 +15,7 @@ def create_purchase_order(user, items_data: list, order_date=None) -> PurchaseOr
 
     order = PurchaseOrder.objects.create(
         user=user,
+        title=title,
         status=OrderStatus.DRAFT,
         **( {'order_date': order_date} if order_date else {} )
     )
@@ -46,7 +47,7 @@ def confirm_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
             initial_quantity=item.quantity,
             current_quantity=item.quantity,
             unit_cost=item.unit_cost,
-            lot_code=item.lot_code or '',
+            lot_code=item.lot_code or f"PO{order.id}-ITEM{item.id}",
             best_before=item.best_before,
             purchase_order_item=item
         )
@@ -81,7 +82,7 @@ def cancel_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
     return order
 
 @transaction.atomic
-def create_sales_order(user, items_data: list, order_date=None) -> SalesOrder:
+def create_sales_order(user, items_data: list, title: str = None, order_date=None) -> SalesOrder:
     """
     Creates a new SalesOrder in DRAFT status.
     items_data: [{'product_id': int, 'quantity': float, 'unit_price': float}]
@@ -91,6 +92,7 @@ def create_sales_order(user, items_data: list, order_date=None) -> SalesOrder:
 
     order = SalesOrder.objects.create(
         user=user,
+        title=title,
         status=OrderStatus.DRAFT,
         **( {'order_date': order_date} if order_date else {} )
     )

@@ -53,8 +53,13 @@ class StockViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Strictly isolate data: users can only see their own stock batches.
+        Optionally filter by product ID.
         """
-        return Stock.objects.filter(user=self.request.user).order_by('created_at')
+        queryset = Stock.objects.filter(user=self.request.user).order_by('created_at')
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        return queryset
 
     def perform_create(self, serializer):
         """

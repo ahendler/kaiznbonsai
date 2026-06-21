@@ -9,6 +9,7 @@ class OrderStatus(models.TextChoices):
     CANCELLED = 'CANCELLED', 'Cancelled'
 
 class PurchaseOrder(TenantOwnedModel):
+    title = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.DRAFT)
     order_date = models.DateField(auto_now_add=True)
 
@@ -27,6 +28,7 @@ class PurchaseOrderItem(models.Model):
         return f"{self.quantity} x {self.product.name} (PO #{self.order.id})"
 
 class SalesOrder(TenantOwnedModel):
+    title = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.DRAFT)
     order_date = models.DateField(auto_now_add=True)
 

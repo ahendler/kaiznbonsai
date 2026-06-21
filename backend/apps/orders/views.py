@@ -21,9 +21,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         items_data = serializer.validated_data.get('items_data', [])
+        title = serializer.validated_data.get('title')
         
         try:
-            order = create_purchase_order(request.user, items_data)
+            order = create_purchase_order(request.user, items_data, title=title)
         except DjangoValidationError as e:
             raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else list(e.messages))
             
@@ -57,9 +58,10 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         items_data = serializer.validated_data.get('items_data', [])
+        title = serializer.validated_data.get('title')
         
         try:
-            order = create_sales_order(request.user, items_data)
+            order = create_sales_order(request.user, items_data, title=title)
         except DjangoValidationError as e:
             raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else list(e.messages))
             
