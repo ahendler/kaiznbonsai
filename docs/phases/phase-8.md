@@ -28,7 +28,7 @@ Business logic is decoupled from HTTP views using the CQRS pattern.
 ### 3. API Endpoints
 
 - `GET /api/v1/inventory/financials/`: A new endpoint that returns the global financial metrics.
-- `GET /api/v1/inventory/products/`: The existing product list endpoint will be augmented (or a new parameter introduced) to return the annotated financial data per product.
+- `GET /api/v1/inventory/financials/products/`: A dedicated analytical endpoint returning a list of products annotated with `revenue`, `cogs`, `profit`, and `margin`.
 
 ### 4. Testing
 

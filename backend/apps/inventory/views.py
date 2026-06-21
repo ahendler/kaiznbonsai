@@ -3,9 +3,12 @@ from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework import generics
 
 from apps.inventory.models import Product, Stock
-from apps.inventory.serializers import ProductSerializer, StockSerializer
+from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
+from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
@@ -79,3 +82,18 @@ class StockViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT
             )
         return super().destroy(request, *args, **kwargs)
+
+class OverallFinancialsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        financials = get_overall_financials(request.user)
+        return Response(financials)
+
+class ProductFinancialsView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ProductFinancialSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return get_products_with_financials(self.request.user)

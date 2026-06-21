@@ -27,6 +27,16 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("A product with this SKU already exists in your inventory.")
         return value
 
+class ProductFinancialSerializer(serializers.ModelSerializer):
+    revenue = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    cogs = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    profit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'revenue', 'cogs', 'profit', 'margin']
+
 class StockSerializer(serializers.ModelSerializer):
     # Helpful read-only fields for the frontend so it doesn't have to make extra API calls
     product_name = serializers.CharField(source='product.name', read_only=True)
