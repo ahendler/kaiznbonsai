@@ -22,19 +22,22 @@ import {
   IconMessageChatbot,
   IconLogout,
   IconUser,
+  IconDashboard,
   IconBell,
   IconReceipt,
 } from '@tabler/icons-react'
 import { useAuth } from '@/context/AuthContext'
+import { authApi } from '@/api/auth'
 
 export default function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure()
   const [jptOpened, { open: openJpt, close: closeJpt }] = useDisclosure(false)
   const navigate = useNavigate()
   const location = useLocation()
-  const { actions } = useAuth()
+  const { dispatch } = useAuth()
 
   const navItems = [
+    { label: 'Dashboard', icon: IconDashboard, path: '/' },
     { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
     { label: 'Orders', icon: IconReceipt, path: '/orders' },
     { label: 'History', icon: IconHistory, path: '/history' },
@@ -61,10 +64,6 @@ export default function AppLayout() {
             </Group>
 
             <Group gap="md">
-              <ActionIcon variant="subtle" color="gray" size="xl" radius="xl">
-                <IconBell size={24} stroke={1.5} />
-              </ActionIcon>
-              
               <Menu shadow="md" width={200} position="bottom-end">
                 <Menu.Target>
                   <ActionIcon variant="transparent" size="xl" radius="xl">
@@ -74,12 +73,13 @@ export default function AppLayout() {
 
                 <Menu.Dropdown>
                   <Menu.Label>Application</Menu.Label>
-                  <Menu.Item leftSection={<IconUser size={14} />}>Profile</Menu.Item>
-                  <Menu.Divider />
                   <Menu.Item
                     color="red"
                     leftSection={<IconLogout size={14} />}
-                    onClick={() => actions.logout()}
+                    onClick={async () => {
+                      await authApi.logout()
+                      dispatch({ type: 'CLEAR_AUTH' })
+                    }}
                   >
                     Logout
                   </Menu.Item>

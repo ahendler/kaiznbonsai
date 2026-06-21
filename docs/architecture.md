@@ -18,7 +18,7 @@ All API routes are prefixed with `/api/v1/`. Established upfront to avoid breaki
 
 Business logic is separated using a Command Query Responsibility Segregation (CQRS) Lite pattern. State-mutating logic (order confirmation, cancellation, stock adjustment) lives in `apps/<domain>/commands.py` as plain Python functions. Complex data retrieval lives in `apps/<domain>/selectors.py`. This logic does not live in views or serializers. Views are thin orchestrators: authenticate, parse request data, call commands/selectors, serialize and return the response.
 
-**Why:** Splitting reads and writes clarifies side-effects. These functions are callable from views, management commands, Celery tasks, and tests without any HTTP mocking. This makes the core business rules testable in isolation at high speed.
+**Why:** Splitting reads and writes clarifies side-effects. These functions are callable from views, management commands, Celery tasks, and tests without any HTTP mocking. This makes the core business rules testable in isolation.
 
 ## Test Database: Always Postgres
 

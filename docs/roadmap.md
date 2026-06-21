@@ -60,23 +60,23 @@
 
 ## Phase 9: Financial Dashboard UI
 
-- Build the main landing dashboard for authenticated users.
+- Build the main dashboard for authenticated users.
 - Implement metric cards showing overall Revenue, Costs, and Profit.
 - Build visualizations (charts or tables) for individual product profit margins.
 - Integrate backend financial APIs with the frontend UI.
+- Create a Django management command to generate realistic synthetic data via system actions.
 
 ## Phase 10: Final Polish, Testing & Deployment
 
 - Conduct end-to-end testing of the entire flow.
-- Apply UI/UX polish (responsive design checks, loading states, empty states).
-- Finalize API documentation and the project README.
-- Prepare the application for cloud deployment.
+- Conduct end-to-end testing.
+- Apply UI refinements (responsive design, loading states, empty states).
+- Finalize API documentation and project README.
+- Prepare application for cloud deployment.
 
-## Phase 11: AI Assistant (Post-Challenge Roadmap)
+## Phase 11: AI Assistant
 
-> Beyond the challenge requirements — demonstrates initiative and product thinking.
-
-- Natural language query interface: users ask business questions in plain English (e.g. "What were my top 3 products last month?").
-- Backend generates a safe, read-only SQL query via LLM, executes it against the org-scoped data, and returns a structured result plus a plain-English summary.
-- Sandboxed: only SELECT queries, always filtered to `organization = request.user.organization`.
-- Lives in `apps/assistant/` — isolated app, no coupling to core inventory logic.
+- Implement natural language query interface.
+- Backend generates read-only SQL query via LLM, executes against org-scoped data, and returns structured result.
+- Enforce sandboxed SELECT queries, filtered by `organization = request.user.organization`.
+- Implement within `apps/assistant/` with no coupling to core inventory logic.
