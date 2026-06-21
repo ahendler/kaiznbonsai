@@ -233,7 +233,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                             <NumberInput
                               size="xs"
                               value={editValues.initial_quantity}
-                              onChange={(val) => setEditValues({ ...editValues, initial_quantity: val })}
+                              onChange={(val) => setEditValues({ ...editValues, initial_quantity: typeof val === 'number' ? val : parseFloat(val) || 0 })}
                               disabled={isConsumed}
                               hideControls
                               styles={{ input: { width: 80 } }}
@@ -253,7 +253,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                             <NumberInput
                               size="xs"
                               value={editValues.unit_cost}
-                              onChange={(val) => setEditValues({ ...editValues, unit_cost: val })}
+                              onChange={(val) => setEditValues({ ...editValues, unit_cost: typeof val === 'number' ? val : parseFloat(val) || 0 })}
                               decimalScale={2}
                               hideControls
                               styles={{ input: { width: 80 } }}
