@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import api from './client';
 
 export interface OverallFinancials {
-  revenue: number;
-  cogs: number;
-  gross_profit: number;
-  margin: number;
-  inventory_value: number;
+  revenue: string;
+  cogs: string;
+  gross_profit: string;
+  margin: string;
+  inventory_value: string;
 }
 
 export interface ProductFinancials {

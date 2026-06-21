@@ -22,6 +22,7 @@ import {
   IconMessageChatbot,
   IconLogout,
   IconUser,
+  IconDashboard,
   IconBell,
   IconReceipt,
 } from '@tabler/icons-react'
@@ -36,6 +37,7 @@ export default function AppLayout() {
   const { dispatch } = useAuth()
 
   const navItems = [
+    { label: 'Dashboard', icon: IconDashboard, path: '/' },
     { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
     { label: 'Orders', icon: IconReceipt, path: '/orders' },
     { label: 'History', icon: IconHistory, path: '/history' },
