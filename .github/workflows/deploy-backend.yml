@@ -1,0 +1,67 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    paths:
+      - "backend/**"
+      - "infrastructure/infrastructure/backend_stack.py"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsKaiznBonsaiRole
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image to Amazon ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/kaiznbonsai-backend:latest
+
+      - name: Deploy to Elastic Beanstalk
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # 1. Update the placeholder in docker-compose.yml with the newly pushed image
+          sed -i "s|__BACKEND_IMAGE__|$ECR_REGISTRY/kaiznbonsai-backend:latest|g" backend/docker-compose.yml
+
+          # 2. Package the source bundle
+          cd backend
+          zip deploy.zip docker-compose.yml
+
+          # 3. Upload to the S3 bucket created by CDK
+          aws s3 cp deploy.zip s3://${{ secrets.EB_DEPLOY_BUCKET }}/kaiznbonsai-backend-${{ github.sha }}.zip
+
+          # 4. Create a new Elastic Beanstalk Application Version
+          aws elasticbeanstalk create-application-version \
+            --application-name KaiznBonsaiApp \
+            --version-label ${{ github.sha }} \
+            --source-bundle S3Bucket=${{ secrets.EB_DEPLOY_BUCKET }},S3Key=kaiznbonsai-backend-${{ github.sha }}.zip
+
+          # 5. Update the Environment
+          aws elasticbeanstalk update-environment \
+            --environment-name KaiznBonsai-Prod \
+            --version-label ${{ github.sha }}

@@ -12,13 +12,13 @@ import {
   Box,
   Stack,
   Affix,
+  Badge,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   IconBoxSeam,
   IconHistory,
-  IconSettings,
   IconMessageChatbot,
   IconLogout,
   IconUser,
@@ -37,11 +37,10 @@ export default function AppLayout() {
   const { dispatch } = useAuth()
 
   const navItems = [
-    { label: 'Dashboard', icon: IconDashboard, path: '/' },
-    { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
-    { label: 'Orders', icon: IconReceipt, path: '/orders' },
-    { label: 'History', icon: IconHistory, path: '/history' },
-    { label: 'Settings', icon: IconSettings, path: '/settings' },
+    { label: 'Dashboard', icon: IconDashboard, path: '/', comingSoon: false },
+    { label: 'Products', icon: IconBoxSeam, path: '/inventory/products', comingSoon: false },
+    { label: 'Orders', icon: IconReceipt, path: '/orders', comingSoon: false },
+    { label: 'History', icon: IconHistory, path: '/history', comingSoon: true },
   ]
 
   return (
@@ -100,7 +99,7 @@ export default function AppLayout() {
               JPT Assistant
             </Text>
             <Text c="dimmed" mt="xs" size="sm">
-              AI Assistant integration coming in Phase 12.
+              Coming soon
             </Text>
           </Box>
         </AppShell.Aside>
@@ -128,16 +127,22 @@ export default function AppLayout() {
           {navItems.map((item) => (
             <NavLink
               key={item.path}
-              className="nav-item-hover"
+              className={item.comingSoon ? '' : 'nav-item-hover'}
               label={<Text size="lg" fw={500}>{item.label}</Text>}
               leftSection={<item.icon size={24} stroke={1.5} />}
-              active={location.pathname.startsWith(item.path)}
-              onClick={() => {
-                navigate(item.path)
-                close()
+              rightSection={item.comingSoon && <Badge size="xs" variant="light" color="gray">Coming soon</Badge>}
+              active={location.pathname.startsWith(item.path) && !item.comingSoon}
+              onClick={(e) => {
+                if (item.comingSoon) {
+                  e.preventDefault()
+                } else {
+                  navigate(item.path)
+                  close()
+                }
               }}
               variant="light"
               color="green"
+              disabled={item.comingSoon}
               style={{ borderRadius: 8, padding: '12px 16px' }}
             />
           ))}

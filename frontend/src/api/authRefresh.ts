@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AuthAction } from './AuthContextTypes'
+import type { AuthAction } from '@/types/AuthContextTypes'
 import type { User } from '@/types/auth'
 
 export const REFRESH_TOKEN_KEY = 'kb_refresh_token'
