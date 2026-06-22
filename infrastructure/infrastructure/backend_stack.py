@@ -133,6 +133,11 @@ class BackendStack(Stack):
                     option_name="POSTGRES_DB",
                     value="kaiznbonsaidb"
                 ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elb:healthcheck",
+                    option_name="Target",
+                    value="HTTP:80/admin/login/"
+                ),
             ]
         )
         env.add_dependency(app_version)
