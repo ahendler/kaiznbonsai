@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from aws_cdk import (
     Stack,
     aws_elasticbeanstalk as elasticbeanstalk,
@@ -102,7 +106,7 @@ class BackendStack(Stack):
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="SECRET_KEY",
-                    value="prod-secret-key-replace-me"
+                    value=os.environ.get("DJANGO_SECRET_KEY", "prod-secret-key-replace-me")
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
@@ -114,9 +118,21 @@ class BackendStack(Stack):
                     option_name="CORS_ALLOWED_ORIGINS",
                     value="https://d1zfq2u3duxnio.cloudfront.net"
                 ),
-                # Note: Postgres configuration is internal to the docker-compose network on the instance,
-                # but we could expose it via environment variables here if needed.
-                # Replace value with real domain
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="POSTGRES_USER",
+                    value="kaiznbonsai"
+                ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="POSTGRES_PASSWORD",
+                    value=os.environ.get("DB_PASSWORD", "prod-db-password-replace-me")
+                ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="POSTGRES_DB",
+                    value="kaiznbonsaidb"
+                ),
             ]
         )
         env.add_dependency(app_version)
