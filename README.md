@@ -4,12 +4,9 @@ Inventory management for Food & Beverage CPG brands — products, stock batches,
 
 ## Live
 
-| | URL |
-|---|---|
-| Frontend | https://d1zfq2u3duxnio.cloudfront.net |
-| API | https://d3pns2fv8qmi6v.cloudfront.net |
+**https://d1zfq2u3duxnio.cloudfront.net**
 
-API docs (Swagger): https://d3pns2fv8qmi6v.cloudfront.net/api/docs/
+API docs (Swagger): https://d1zfq2u3duxnio.cloudfront.net/api/docs/
 
 ## Quick start
 

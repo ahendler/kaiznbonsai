@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bug/repo-hygiene
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-web.yml"
@@ -33,8 +34,6 @@ jobs:
           npm install
 
       - name: Build Web App
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
         run: |
           cd frontend
           npm run build

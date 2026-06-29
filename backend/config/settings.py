@@ -84,12 +84,12 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     # Cookie settings for the httpOnly refresh token.
+    # Frontend and API share the same CloudFront origin, so SameSite=Lax works.
+    # Secure is tied to DEBUG so it is False in local dev (HTTP) and True in prod (HTTPS).
     'AUTH_COOKIE': 'refresh_token',
     'AUTH_COOKIE_HTTP_ONLY': True,
-    # SameSite=Lax is sufficient for same-origin SPA; change to 'None' + Secure=True
-    # if the frontend is served from a different domain.
     'AUTH_COOKIE_SAMESITE': 'Lax',
-    'AUTH_COOKIE_SECURE': False,  # Set to True in production (HTTPS only)
+    'AUTH_COOKIE_SECURE': not DEBUG,
 }
 
 

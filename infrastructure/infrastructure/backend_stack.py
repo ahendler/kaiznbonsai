@@ -12,8 +12,6 @@ from aws_cdk import (
     aws_ecr as ecr,
     aws_s3_assets as s3_assets,
     aws_s3 as s3,
-    aws_cloudfront as cloudfront,
-    aws_cloudfront_origins as origins,
     RemovalPolicy,
     CfnOutput,
 )
@@ -129,11 +127,6 @@ class BackendStack(Stack):
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
-                    option_name="CORS_ALLOWED_ORIGINS",
-                    value=_require_env("CORS_ALLOWED_ORIGINS"),
-                ),
-                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
-                    namespace="aws:elasticbeanstalk:application:environment",
                     option_name="POSTGRES_USER",
                     value=_require_env("POSTGRES_USER"),
                 ),
@@ -174,27 +167,8 @@ class BackendStack(Stack):
             self,
             "EBEnvironmentURL",
             value=env.attr_endpoint_url,
-            description="URL of the Elastic Beanstalk Environment",
+            description="Raw EB HTTP endpoint (internal — use the frontend CloudFront URL for public access)",
         )
 
-        backend_cf = cloudfront.Distribution(
-            self,
-            "BackendCloudFront",
-            default_behavior=cloudfront.BehaviorOptions(
-                origin=origins.HttpOrigin(
-                    env.attr_endpoint_url,
-                    protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY,
-                ),
-                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
-                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
-                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER,
-            ),
-        )
-
-        CfnOutput(
-            self,
-            "BackendCloudFrontURL",
-            value=f"https://{backend_cf.distribution_domain_name}",
-            description="Secure HTTPS URL for the backend API (Use this as VITE_API_URL)",
-        )
+        # Expose for FrontendStack to add /api/* and /admin/* routing behaviors
+        self.eb_endpoint_url = env.attr_endpoint_url

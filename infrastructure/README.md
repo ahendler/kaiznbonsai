@@ -8,9 +8,10 @@ Infrastructure-as-code for deploying KaiznBonsai to AWS (CDK, Python). Applicati
 graph TD
     Browser["Browser"]
 
-    subgraph CDN
-        FE_CF["CloudFront<br/>(frontend)"]
-        API_CF["CloudFront<br/>(backend API)"]
+    subgraph CDN ["CloudFront (single distribution)"]
+        CF_S3["/* → S3"]
+        CF_API["/api/* → EB"]
+        CF_ADMIN["/admin/* → EB"]
     end
 
     S3["S3 Bucket<br/>(React static build)"]
@@ -23,10 +24,12 @@ graph TD
     ECR["ECR<br/>kaiznbonsai-backend"]
     GHA["GitHub Actions"]
 
-    Browser --> FE_CF
-    Browser --> API_CF
-    FE_CF --> S3
-    API_CF --> Django
+    Browser --> CF_S3
+    Browser --> CF_API
+    Browser --> CF_ADMIN
+    CF_S3 --> S3
+    CF_API --> Django
+    CF_ADMIN --> Django
     Django --> PG
     GHA -->|build & push| ECR
     GHA -->|sync dist| S3
@@ -36,9 +39,8 @@ graph TD
 
 | Component | Service | Role |
 |-----------|---------|------|
-| Frontend | S3 + CloudFront | Static React build |
+| Frontend + API | S3 + CloudFront | Single distribution; `/api/*` and `/admin/*` route to EB; `/*` serves S3 |
 | Backend | Elastic Beanstalk + ECR | Django (Gunicorn) + Postgres via Docker Compose |
-| API HTTPS | CloudFront (backend) | TLS; caching disabled; all methods forwarded |
 | Registry | ECR | `kaiznbonsai-backend` image |
 | EB bundles | S3 | Application version manifests (compose zip) |
 
@@ -46,16 +48,16 @@ Postgres runs on the same EB instance as Django (not RDS). See [`docs/architectu
 
 ## Configuration
 
-Production Elastic Beanstalk environment variables are set at **`cdk deploy`** time from `infrastructure/.env` (template: `.env.example`). `backend_stack.py` reads that file and writes values into the EB environment.
-
-Deploy the frontend stack first, then set `CORS_ALLOWED_ORIGINS` in `infrastructure/.env` to the `CloudFrontURL` output before deploying the backend stack.
+Production EB environment variables are set at **`cdk deploy`** time from `infrastructure/.env` (template: `.env.example`). `backend_stack.py` reads that file and writes values into the EB environment.
 
 ## Stacks
 
+`BackendStack` must be deployed first — `FrontendStack` takes the EB endpoint URL as a constructor parameter to wire the `/api/*` and `/admin/*` CloudFront behaviors.
+
 | Stack | Creates |
 |-------|---------|
-| `KaiznBonsaiFrontendStack` | S3 bucket, CloudFront (SPA 404 → `index.html`) |
-| `KaiznBonsaiBackendStack` | ECR, EB app/env, EB deploy bucket, backend CloudFront |
+| `KaiznBonsaiBackendStack` | ECR, EB app/env, EB deploy bucket |
+| `KaiznBonsaiFrontendStack` | S3 bucket, CloudFront with path-based routing to EB |
 
 ## CDK deploy
 
@@ -65,20 +67,19 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # fill in values
 
-cdk deploy KaiznBonsaiFrontendStack
-# Set CORS_ALLOWED_ORIGINS in .env to the CloudFrontURL output
 cdk deploy KaiznBonsaiBackendStack
+cdk deploy KaiznBonsaiFrontendStack
 ```
 
 ### CDK outputs → CI variables
 
 | CDK output | GitHub Actions secret (`prod` environment) |
 |------------|---------------------------------------------|
-| `CloudFrontURL` | — (live frontend URL) |
+| `CloudFrontURL` | — (live URL for both frontend and API) |
 | `FrontendBucketName` | `S3_WEB_BUCKET` |
 | `CloudFrontDistributionId` | `CLOUDFRONT_DIST_ID` |
-| `BackendCloudFrontURL` | `VITE_API_URL` |
 | `EBDeployBucketName` | `EB_DEPLOY_BUCKET` |
+| `EBEnvironmentURL` | Internal EB endpoint — not exposed publicly |
 
 Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 
@@ -92,7 +93,7 @@ Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 ### Backend deploy flow
 
 1. Build `backend/Dockerfile.prod` → push to ECR as `kaiznbonsai-backend:latest`
-2. In CI only: substitute `__BACKEND_IMAGE__` in a copy of `backend/docker-compose.yml` (the committed file keeps the placeholder)
+2. In CI only: substitute `__BACKEND_IMAGE__` in a copy of `backend/docker-compose.yml` (committed file keeps the placeholder)
 3. Zip the compose manifest → upload to the EB deploy bucket
 4. Create EB application version → update `KaiznBonsai-Prod`
 

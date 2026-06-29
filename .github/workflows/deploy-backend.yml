@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - bug/repo-hygiene
     paths:
       - "backend/**"
       - "infrastructure/infrastructure/backend_stack.py"

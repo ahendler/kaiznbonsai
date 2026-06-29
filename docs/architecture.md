@@ -22,7 +22,7 @@ Business logic is separated using a Command Query Responsibility Segregation (CQ
 
 ## CORS and API Documentation
 
-- **`django-cors-headers`:** configured in `config/settings.py`. `CORS_ALLOWED_ORIGINS` is read from the environment; credentials are allowed so the httpOnly refresh cookie works cross-origin in production.
+- **`django-cors-headers`:** configured in `config/settings.py`. `CORS_ALLOWED_ORIGINS` is read from the environment and defaults to `http://localhost:3000`. In production the frontend and API share the same CloudFront origin, so CORS is only active in local development.
 - **`drf-spectacular`:** generates OpenAPI 3 schema and interactive docs:
   - Swagger UI: `/api/docs/`
   - ReDoc: `/api/redoc/`
@@ -42,9 +42,8 @@ docker compose up -d && docker compose exec backend pytest
 
 Production runs on AWS, defined in `infrastructure/` via CDK:
 
-- **Frontend:** S3 + CloudFront (static React build)
+- **Frontend + API:** a single CloudFront distribution serves both. Static assets come from S3; `/api/*` and `/admin/*` paths route to Elastic Beanstalk. Frontend and API share the same origin — no CORS in production.
 - **Backend:** ECR image on Elastic Beanstalk (Docker multicontainer: Django + Postgres on one EC2 instance)
-- **API HTTPS:** a second CloudFront distribution proxies the EB environment (caching disabled, all methods forwarded)
 - **CI/CD:** GitHub Actions builds and deploys on push to `main`
 
 Production Elastic Beanstalk environment variables are set at CDK deploy time from `infrastructure/.env` (see [`infrastructure/README.md`](../infrastructure/README.md)).
