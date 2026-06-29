@@ -1,7 +1,9 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from aws_cdk import (
     Stack,
@@ -13,16 +15,28 @@ from aws_cdk import (
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     RemovalPolicy,
-    CfnOutput
+    CfnOutput,
 )
 from constructs import Construct
+
+
+def _require_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise ValueError(
+            f"Missing required environment variable: {name}. "
+            f"Set it in infrastructure/.env (see infrastructure/.env.example)."
+        )
+    return value
+
 
 class BackendStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # 1. IAM Role for EB Instance Profile
-        eb_instance_role = iam.Role(self, "EBInstanceRole",
+        eb_instance_role = iam.Role(
+            self,
+            "EBInstanceRole",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
         )
         eb_instance_role.add_managed_policy(
@@ -32,62 +46,62 @@ class BackendStack(Stack):
             iam.ManagedPolicy.from_aws_managed_policy_name("AWSElasticBeanstalkMulticontainerDocker")
         )
         eb_instance_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("AWSElasticBeanstalkMulticontainerDocker")
-        )
-        eb_instance_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryReadOnly")
         )
 
-        eb_instance_profile = iam.CfnInstanceProfile(self, "EBInstanceProfile",
-            roles=[eb_instance_role.role_name]
+        eb_instance_profile = iam.CfnInstanceProfile(
+            self, "EBInstanceProfile", roles=[eb_instance_role.role_name]
         )
 
-        # 2. Create an ECR Repository for the Backend image
-        backend_repo = ecr.Repository(self, "BackendRepo",
+        backend_repo = ecr.Repository(
+            self,
+            "BackendRepo",
             repository_name="kaiznbonsai-backend",
             removal_policy=RemovalPolicy.DESTROY,
-            empty_on_delete=True
+            empty_on_delete=True,
         )
 
-        CfnOutput(self, "KaiznBonsaiEcrRepoUri",
+        CfnOutput(
+            self,
+            "KaiznBonsaiEcrRepoUri",
             value=backend_repo.repository_uri,
-            description="The ECR Repository URI"
+            description="The ECR Repository URI",
         )
 
-        # 3. Create an S3 Bucket for GitHub Actions to upload EB source bundles
-        eb_deploy_bucket = s3.Bucket(self, "EBDeployBucket",
+        eb_deploy_bucket = s3.Bucket(
+            self,
+            "EBDeployBucket",
             removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
+            auto_delete_objects=True,
         )
 
-        CfnOutput(self, "EBDeployBucketName",
+        CfnOutput(
+            self,
+            "EBDeployBucketName",
             value=eb_deploy_bucket.bucket_name,
-            description="S3 Bucket for EB application versions"
+            description="S3 Bucket for EB application versions",
         )
 
-        # 4. Define the Elastic Beanstalk Application
-        app = elasticbeanstalk.CfnApplication(self, "KaiznBonsaiEBApp",
-            application_name="KaiznBonsaiApp"
+        app = elasticbeanstalk.CfnApplication(
+            self, "KaiznBonsaiEBApp", application_name="KaiznBonsaiApp"
         )
 
-        # 3. Create the App Version by zipping the backend directory (including Dockerfile, eb-docker-compose.yml)
-        # In a real pipeline, this zip should be pre-packaged and uploaded to S3.
-        # Here we just point to the backend folder to let CDK package it as an S3 asset.
-        backend_asset = s3_assets.Asset(self, "KaiznBonsaiBackendAsset",
-            path="../backend"
-        )
+        backend_asset = s3_assets.Asset(self, "KaiznBonsaiBackendAsset", path="../backend")
 
-        app_version = elasticbeanstalk.CfnApplicationVersion(self, "KaiznBonsaiAppVersion",
+        app_version = elasticbeanstalk.CfnApplicationVersion(
+            self,
+            "KaiznBonsaiAppVersion",
             application_name=app.application_name,
             source_bundle=elasticbeanstalk.CfnApplicationVersion.SourceBundleProperty(
                 s3_bucket=backend_asset.s3_bucket_name,
-                s3_key=backend_asset.s3_object_key
-            )
+                s3_key=backend_asset.s3_object_key,
+            ),
         )
         app_version.add_dependency(app)
 
-        # 4. Define the Environment Configuration
-        env = elasticbeanstalk.CfnEnvironment(self, "KaiznBonsaiEBEnv",
+        env = elasticbeanstalk.CfnEnvironment(
+            self,
+            "KaiznBonsaiEBEnv",
             environment_name="KaiznBonsai-Prod",
             application_name=app.application_name,
             solution_stack_name="64bit Amazon Linux 2023 v4.13.2 running Docker",
@@ -96,81 +110,91 @@ class BackendStack(Stack):
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:autoscaling:launchconfiguration",
                     option_name="IamInstanceProfile",
-                    value=eb_instance_profile.ref
+                    value=eb_instance_profile.ref,
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:autoscaling:launchconfiguration",
                     option_name="InstanceType",
-                    value="t3.small" # Smallest instance that can comfortably run Django + Postgres containers
+                    value="t3.small",
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="SECRET_KEY",
-                    value=os.environ.get("DJANGO_SECRET_KEY", "prod-secret-key-replace-me")
+                    value=_require_env("DJANGO_SECRET_KEY"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="DEBUG",
-                    value="False"
+                    value="False",
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="CORS_ALLOWED_ORIGINS",
-                    value="https://d1zfq2u3duxnio.cloudfront.net"
+                    value=_require_env("CORS_ALLOWED_ORIGINS"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="POSTGRES_USER",
-                    value="kaiznbonsai"
+                    value=_require_env("POSTGRES_USER"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="POSTGRES_PASSWORD",
-                    value=os.environ.get("DB_PASSWORD", "prod-db-password-replace-me")
+                    value=_require_env("DB_PASSWORD"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elasticbeanstalk:application:environment",
                     option_name="POSTGRES_DB",
-                    value="kaiznbonsaidb"
+                    value=_require_env("POSTGRES_DB"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elb:healthcheck",
                     option_name="Target",
-                    value="HTTP:80/admin/login/"
+                    value="HTTP:80/admin/login/",
                 ),
-            ]
+            ],
         )
         env.add_dependency(app_version)
 
-        CfnOutput(self, "EBApplicationName",
+        CfnOutput(
+            self,
+            "EBApplicationName",
             value=app.application_name,
-            description="Elastic Beanstalk Application Name"
+            description="Elastic Beanstalk Application Name",
         )
 
-        CfnOutput(self, "EBEnvironmentName",
+        CfnOutput(
+            self,
+            "EBEnvironmentName",
             value=env.environment_name,
-            description="Elastic Beanstalk Environment Name"
+            description="Elastic Beanstalk Environment Name",
         )
 
-        CfnOutput(self, "EBEnvironmentURL",
+        CfnOutput(
+            self,
+            "EBEnvironmentURL",
             value=env.attr_endpoint_url,
-            description="URL of the Elastic Beanstalk Environment"
+            description="URL of the Elastic Beanstalk Environment",
         )
 
-        # 5. CloudFront Distribution (HTTPS Proxy for the Backend)
-        backend_cf = cloudfront.Distribution(self, "BackendCloudFront",
+        backend_cf = cloudfront.Distribution(
+            self,
+            "BackendCloudFront",
             default_behavior=cloudfront.BehaviorOptions(
-                origin=origins.HttpOrigin(env.attr_endpoint_url,
-                    protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY
+                origin=origins.HttpOrigin(
+                    env.attr_endpoint_url,
+                    protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY,
                 ),
                 allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
                 origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER,
-            )
+            ),
         )
 
-        CfnOutput(self, "BackendCloudFrontURL",
+        CfnOutput(
+            self,
+            "BackendCloudFrontURL",
             value=f"https://{backend_cf.distribution_domain_name}",
-            description="Secure HTTPS URL for the backend API (Use this as VITE_API_URL)"
+            description="Secure HTTPS URL for the backend API (Use this as VITE_API_URL)",
         )

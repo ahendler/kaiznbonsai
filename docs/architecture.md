@@ -1,10 +1,10 @@
 # Architectural Decisions and Considerations
 
-This document tracks the technical and architectural choices made throughout the development of the kaiznbonsai inventory management application.
+Technical and architectural choices for the KaiznBonsai inventory management application.
 
 ## Email as Login Credential
 
-`User.USERNAME_FIELD = "email"`. Business-facing SaaS products authenticate with email, not an arbitrary username — users don't think in usernames. `username` is retained as a field because `AbstractUser` requires it internally (e.g. `createsuperuser`), but it is auto-set to equal the email on registration and is never exposed through the API.
+`User.USERNAME_FIELD = "email"`. Business-facing SaaS products authenticate with email, not an arbitrary username. `username` is retained because `AbstractUser` requires it internally (e.g. `createsuperuser`), but it is auto-set to equal the email on registration and is never exposed through the API.
 
 ## App Namespace: `apps/`
 
@@ -12,40 +12,57 @@ All Django apps live under `backend/apps/` (e.g. `apps.accounts`, `apps.inventor
 
 ## API Versioning: `/api/v1/`
 
-All API routes are prefixed with `/api/v1/`. Established upfront to avoid breaking the frontend or external integrations when a v2 surface is needed. Zero additional cost if versioning is never needed; significant cost if routes need renaming after the frontend is integrated.
+All API routes are prefixed with `/api/v1/`. Established upfront to avoid breaking the frontend or external integrations when a v2 surface is needed.
 
 ## CQRS Lite Pattern
 
-Business logic is separated using a Command Query Responsibility Segregation (CQRS) Lite pattern. State-mutating logic (order confirmation, cancellation, stock adjustment) lives in `apps/<domain>/commands.py` as plain Python functions. Complex data retrieval lives in `apps/<domain>/selectors.py`. This logic does not live in views or serializers. Views are thin orchestrators: authenticate, parse request data, call commands/selectors, serialize and return the response.
+Business logic is separated using a Command Query Responsibility Segregation (CQRS) Lite pattern. State-mutating logic (order confirmation, cancellation, stock adjustment) lives in `apps/<domain>/commands.py` as plain Python functions. Complex data retrieval lives in `apps/<domain>/selectors.py`. Views are thin orchestrators: authenticate, parse request data, call commands/selectors, serialize and return the response.
 
-**Why:** Splitting reads and writes clarifies side-effects. These functions are callable from views, management commands, Celery tasks, and tests without any HTTP mocking. This makes the core business rules testable in isolation.
+**Why:** Splitting reads and writes clarifies side-effects. These functions are callable from views, management commands, and tests without HTTP mocking.
+
+## CORS and API Documentation
+
+- **`django-cors-headers`:** configured in `config/settings.py`. `CORS_ALLOWED_ORIGINS` is read from the environment; credentials are allowed so the httpOnly refresh cookie works cross-origin in production.
+- **`drf-spectacular`:** generates OpenAPI 3 schema and interactive docs:
+  - Swagger UI: `/api/docs/`
+  - ReDoc: `/api/redoc/`
+  - Raw schema: `/api/schema/`
 
 ## Test Database: Always Postgres
 
-Tests run against the Dockerized Postgres instance. `pytest.ini` points directly at `config.settings`, and the Postgres container must be running before executing the test suite (`docker compose up -d && docker compose exec backend pytest`).
+Tests run against the Dockerized Postgres instance. `pytest.ini` points at `config.settings`, and the Postgres container must be running before executing the test suite:
 
-**Why:** Production-parity testing from the first commit removes an entire class of environment-specific bugs. The test runner uses a throwaway database created per-session by `pytest-django` — there is no shared state between runs.
+```bash
+docker compose up -d && docker compose exec backend pytest
+```
 
-## Planned: `CORS`, `drf-spectacular` (Phase 3)
+**Why:** Production-parity testing removes environment-specific bugs. `pytest-django` creates a throwaway database per session — no shared state between runs.
 
-- `django-cors-headers`: required before the React frontend can make cross-origin requests to the backend.
-- `drf-spectacular`: generates OpenAPI schema + Swagger UI at `/api/schema/swagger-ui/` — required for API documentation criterion with zero per-endpoint overhead.
+## AWS Deployment (summary)
 
-# Known Compromises
+Production runs on AWS, defined in `infrastructure/` via CDK:
 
-## Infrastructure & Database Deployment
+- **Frontend:** S3 + CloudFront (static React build)
+- **Backend:** ECR image on Elastic Beanstalk (Docker multicontainer: Django + Postgres on one EC2 instance)
+- **API HTTPS:** a second CloudFront distribution proxies the EB environment (caching disabled, all methods forwarded)
+- **CI/CD:** GitHub Actions builds and deploys on push to `main`
 
-A standard production SaaS separates the backend from the database using a managed service like AWS RDS. However, to prioritize speed and minimize costs for this deployment, both the Django application and the PostgreSQL database are deployed as containers on a single AWS Elastic Beanstalk instance using the Docker platform.
+Production Elastic Beanstalk environment variables are set at CDK deploy time from `infrastructure/.env` (see [`infrastructure/README.md`](../infrastructure/README.md)).
 
-## No multi-tenancy
+---
 
-The data model has no `Organization` or `Tenant` entity. All user data is isolated at the row level via `queryset.filter(user=request.user)` — each user sees only their own inventory, orders, and financials. A production multi-tenant SaaS would introduce an `Organization` model with owner and member roles, scoping every queryset to `organization=request.user.organization` instead. That architecture was evaluated and deliberately deferred as it's not a requirement for the challenge and does not showcase extra complexity.
+## Known Compromises
 
-## Business Logic Edge Cases & Ambiguities
+### Infrastructure & Database Deployment
 
-During the development of the inventory and order management features, several architectural decisions were made that prioritize simplicity and system stability. However, deeper business understanding from stakeholders would be necessary to decide the ideal outcome in real-world scenarios such as:
+A standard production SaaS separates the backend from the database using a managed service like AWS RDS. To prioritize speed and minimize cost, both the Django application and PostgreSQL run as containers on a single Elastic Beanstalk instance (`backend/docker-compose.yml`). See the infrastructure README for the full topology and trade-offs.
 
-- **Manual Stock vs. Order Integrity:** To maintain financial and historical accuracy, stock batches generated by Purchase Orders are completely locked from manual editing of their initial quantity and cost. However, in the real world, stock goes missing, expires, or gets damaged (shrinkage/spillage).
-  - _Future Work:_ Instead of allowing users to delete or edit the `initial_quantity` of a locked batch, we should introduce an **"Inventory Adjustment"** feature. This would safely deduct from the `current_quantity` while recording an audit log (e.g., "Spoilage", "Count Discrepancy") to preserve the original purchasing history.
-- **Cost Basis on Returns:** When a Sales Order is cancelled and stock is refunded, what is the cost basis of the refunded stock? Should we refund it into a new stock batch with a $0 cost, or attempt to merge it into the oldest active batch? Currently, the system merges it into the newest active batch.
-- **Partial Fulfillments:** Real-world orders are often partially fulfilled (e.g. 50/100 units arrive today, 50 arrive next week). The current architecture assumes atomic, full confirmations.
+### No multi-tenancy
+
+The data model has no `Organization` entity. All user data is isolated at the row level via `queryset.filter(user=request.user)` — each user sees only their own inventory, orders, and financials. A production multi-tenant SaaS would introduce an `Organization` model with owner and member roles.
+
+### Business Logic Edge Cases & Ambiguities
+
+- **Manual Stock vs. Order Integrity:** Stock batches generated by Purchase Orders are locked from manual editing of their initial quantity and cost. Real-world shrinkage would need an **Inventory Adjustment** feature that deducts `current_quantity` while preserving purchase history.
+- **Cost Basis on Returns:** When a Sales Order is cancelled and stock is refunded, the system merges quantity back into the newest active batch.
+- **Partial Fulfillments:** The current architecture assumes atomic, full confirmations.
