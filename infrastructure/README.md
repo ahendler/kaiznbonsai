@@ -87,13 +87,14 @@ Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 
 | Workflow | Triggers on `main` | Action |
 |----------|-------------------|--------|
-| `deploy-web.yml` | `frontend/**` | Build → S3 sync → CloudFront invalidation |
+| `test.yml` | `backend/**`, `docker-compose.yml` | Run pytest in Docker |
+| `deploy-web.yml` | `frontend/**`, `frontend_stack.py` | Build → S3 sync → CloudFront invalidation |
 | `deploy-backend.yml` | `backend/**`, `backend_stack.py` | Build image → ECR push → EB version update |
 
 ### Backend deploy flow
 
 1. Build `backend/Dockerfile.prod` → push to ECR as `kaiznbonsai-backend:latest`
-2. In CI only: substitute `__BACKEND_IMAGE__` in a copy of `backend/docker-compose.yml` (committed file keeps the placeholder)
+2. Substitute `__BACKEND_IMAGE__` in `backend/docker-compose.yml` (CI workspace only; committed file keeps the placeholder)
 3. Zip the compose manifest → upload to the EB deploy bucket
 4. Create EB application version → update `KaiznBonsai-Prod`
 

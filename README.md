@@ -26,6 +26,8 @@ docker compose up --build
 docker compose exec backend pytest
 ```
 
+Also runs in CI on push/PR to `main` (`.github/workflows/test.yml`).
+
 ## Repository
 
 | Path | Purpose |
