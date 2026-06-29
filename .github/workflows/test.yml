@@ -1,0 +1,36 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".github/workflows/test.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".github/workflows/test.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          sed -i 's/^SECRET_KEY=$/SECRET_KEY=ci-test-secret-key/' .env
+
+      - name: Run backend tests
+        run: |
+          docker compose up -d db
+          docker compose run --rm backend sh -c "python manage.py migrate && pytest"

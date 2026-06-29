@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - main
-      - bug/repo-hygiene
     paths:
       - "frontend/**"
+      - "infrastructure/infrastructure/frontend_stack.py"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
