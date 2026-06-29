@@ -2,15 +2,37 @@
 .env
 .env.local
 
+# Build / deploy artifacts
+*.zip
+deploy.zip
+.pytest_cache/
+
+# Local planning (kept on disk)
+docs/phases/
+docs/roadmap.md
+docs/challenge.md
+
 # Python/Django
 __pycache__/
 *.pyc
 venv/
-db.sqlite3
+
+# Backend local
+backend/venv/
+backend/.env
+backend/.pytest_cache/
+
+# Infrastructure local
+infrastructure/.env
+infrastructure/.venv/
+infrastructure/cdk.out/
 
 # Node
 node_modules/
 dist/
+
+# Frontend local
+frontend/.env
 
 # IDE
 .idea/
