@@ -1,9 +1,11 @@
 import pytest
+from datetime import date
 from decimal import Decimal
 from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.inventory.commands import record_movement
 from apps.inventory.models import MovementReason, Product, Stock
+from apps.orders.constants import StockAllocationStrategy
 from apps.orders.models import PurchaseOrder, SalesOrder, OrderStatus
 
 @pytest.fixture
@@ -29,13 +31,14 @@ def product(user):
     )
 
 
-def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('10.00')):
+def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('10.00'), best_before=None):
     stock = Stock.objects.create(
         user=user,
         product=product,
         initial_quantity=Decimal(str(quantity)),
         current_quantity=Decimal('0'),
         unit_cost=unit_cost,
+        best_before=best_before,
     )
     record_movement(
         user=user,
@@ -176,6 +179,38 @@ class TestSalesOrderAPI:
         stock.refresh_from_db()
         assert stock.current_quantity == Decimal('50.000')
         assert stock.movements.filter(reason=MovementReason.SALE).count() == 1
+
+    def test_confirm_sales_order_with_fefo_strategy(self, authenticated_client, product, user):
+        make_stock_with_receipt(user, product, 100, best_before=date(2026, 12, 31))
+        expiring = make_stock_with_receipt(user, product, 100, best_before=date(2026, 6, 1))
+
+        so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=50, unit_price=20.00)
+
+        url = f'/api/v1/orders/sales-orders/{so.id}/confirm/'
+        response = authenticated_client.post(
+            url,
+            {'allocation_strategy': StockAllocationStrategy.FEFO},
+            format='json',
+        )
+        assert response.status_code == 200
+
+        expiring.refresh_from_db()
+        assert expiring.current_quantity == Decimal('50.000')
+        assert Stock.objects.order_by('created_at').first().current_quantity == Decimal('100.000')
+
+    def test_confirm_sales_order_rejects_invalid_allocation_strategy(self, authenticated_client, product, user):
+        make_stock_with_receipt(user, product, 100)
+        so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=10, unit_price=20.00)
+
+        url = f'/api/v1/orders/sales-orders/{so.id}/confirm/'
+        response = authenticated_client.post(
+            url,
+            {'allocation_strategy': 'INVALID'},
+            format='json',
+        )
+        assert response.status_code == 400
 
     def test_confirm_sales_order_insufficient_stock(self, authenticated_client, product, user):
         so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)

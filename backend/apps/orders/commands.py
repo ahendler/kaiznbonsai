@@ -5,6 +5,8 @@ from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, Sal
 from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.inventory.commands import record_movement
 from apps.orders.validators import validate_products_belong_to_user
+from apps.orders.allocation import available_batches_for_allocation
+from apps.orders.constants import StockAllocationStrategy
 
 ORDER_NOT_DRAFT = 'Only draft orders can be confirmed.'
 ORDER_ALREADY_CANCELLED = 'Order is already cancelled.'
@@ -137,24 +139,32 @@ def create_sales_order(user, items_data: list, title: str = None, order_date=Non
     return order
 
 @transaction.atomic
-def confirm_sales_order(order: SalesOrder) -> SalesOrder:
+def confirm_sales_order(
+    order: SalesOrder,
+    *,
+    allocation_strategy: str = StockAllocationStrategy.FIFO,
+) -> SalesOrder:
     """
     Transitions SO to CONFIRMED.
-    Implements FIFO stock deduction: deducts stock from the oldest available batches.
+    Deducts stock using FIFO (created_at) or hybrid FEFO (best_before, then created_at).
     Raises ValidationError if insufficient stock.
     """
+    if allocation_strategy not in StockAllocationStrategy.values:
+        raise ValidationError('Invalid allocation strategy.')
+
     if order.status != OrderStatus.DRAFT:
         raise ValidationError(ORDER_NOT_DRAFT)
 
     for item in order.items.select_related('product').all():
         remaining_to_deduct = Decimal(str(item.quantity))
-        
-        # Lock the stock rows to prevent race conditions during FIFO allocation
-        available_batches = list(Stock.objects.filter(
-            user=order.user,
-            product=item.product,
-            current_quantity__gt=0
-        ).order_by('created_at').select_for_update())
+
+        available_batches = list(
+            available_batches_for_allocation(
+                user=order.user,
+                product=item.product,
+                strategy=allocation_strategy,
+            ).select_for_update()
+        )
 
         total_available = sum(batch.current_quantity for batch in available_batches)
         if total_available < remaining_to_deduct:

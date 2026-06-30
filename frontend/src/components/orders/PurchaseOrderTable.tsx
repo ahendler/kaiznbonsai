@@ -6,7 +6,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { usePurchaseOrders, useConfirmPurchaseOrder, useCancelPurchaseOrder } from '@/api/orders'
 import type { PurchaseOrder } from '@/api/orders'
 import { getApiErrorMessage } from '@/api/errors'
-import { formatOrderMoney, orderStatusColor, sumLineTotals } from '@/utils/orders'
+import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCancelTooltip, orderStatusColor, sumLineTotals } from '@/utils/orders'
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
 import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
 
@@ -15,7 +15,11 @@ export function PurchaseOrderTable() {
   const confirmMutation = useConfirmPurchaseOrder()
   const cancelMutation = useCancelPurchaseOrder()
   const [opened, { open, close }] = useDisclosure(false)
-  const [actionOrder, setActionOrder] = useState<{ id: number, action: 'confirm' | 'cancel' } | null>(null)
+  const [actionOrder, setActionOrder] = useState<{
+    id: number
+    action: 'confirm' | 'cancel'
+    status: PurchaseOrder['status']
+  } | null>(null)
   const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null)
 
   const orders = ordersData?.pages.flatMap(page => page.results) || []
@@ -52,7 +56,7 @@ export function PurchaseOrderTable() {
           <Group gap="xs" wrap="nowrap" justify="center">
             {order.status === 'DRAFT' ? (
               <Tooltip label="Confirm Order (Generates Stock)">
-                <ActionIcon variant="light" color="green" onClick={(e) => { e.stopPropagation(); setActionOrder({ id: order.id, action: 'confirm' }) }}>
+                <ActionIcon variant="light" color="green" onClick={(e) => { e.stopPropagation(); setActionOrder({ id: order.id, action: 'confirm', status: order.status }) }}>
                   <IconCheck size={16} />
                 </ActionIcon>
               </Tooltip>
@@ -67,8 +71,8 @@ export function PurchaseOrderTable() {
             )}
 
             {order.status !== 'CANCELLED' ? (
-              <Tooltip label="Cancel Order (Reverts Stock)">
-                <ActionIcon variant="subtle" color="red" onClick={(e) => { e.stopPropagation(); setActionOrder({ id: order.id, action: 'cancel' }) }}>
+              <Tooltip label={getPurchaseOrderCancelTooltip(order.status)}>
+                <ActionIcon variant="subtle" color="red" onClick={(e) => { e.stopPropagation(); setActionOrder({ id: order.id, action: 'cancel', status: order.status }) }}>
                   <IconX size={16} />
                 </ActionIcon>
               </Tooltip>
@@ -89,7 +93,9 @@ export function PurchaseOrderTable() {
 
   const actionDescription = actionOrder?.action === 'confirm'
     ? 'This will generate stock batches for all items in this order.'
-    : 'This will attempt to remove the generated stock batches. It cannot be undone if the stock has already been consumed.'
+    : actionOrder
+      ? getPurchaseOrderCancelDescription(actionOrder.status)
+      : ''
 
   return (
     <>

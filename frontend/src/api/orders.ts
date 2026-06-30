@@ -6,6 +6,13 @@ import { invalidateFinancials } from './financials';
 // TYPES
 export type OrderStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
 
+export type StockAllocationStrategy = 'FIFO' | 'FEFO';
+
+export interface ConfirmSalesOrderInput {
+  id: number;
+  allocationStrategy?: StockAllocationStrategy;
+}
+
 export interface PurchaseOrderItem {
   id: number;
   product_details: Product;
@@ -95,8 +102,13 @@ const orderApi = {
     const response = await api.post('/orders/sales-orders/', data);
     return response.data;
   },
-  confirmSalesOrder: async (id: number): Promise<SalesOrder> => {
-    const response = await api.post(`/orders/sales-orders/${id}/confirm/`);
+  confirmSalesOrder: async (
+    id: number,
+    allocationStrategy: StockAllocationStrategy = 'FIFO',
+  ): Promise<SalesOrder> => {
+    const response = await api.post(`/orders/sales-orders/${id}/confirm/`, {
+      allocation_strategy: allocationStrategy,
+    });
     return response.data;
   },
   cancelSalesOrder: async (id: number): Promise<SalesOrder> => {
@@ -178,7 +190,8 @@ export const useCreateSalesOrder = () => {
 export const useConfirmSalesOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: orderApi.confirmSalesOrder,
+    mutationFn: ({ id, allocationStrategy = 'FIFO' }: ConfirmSalesOrderInput) =>
+      orderApi.confirmSalesOrder(id, allocationStrategy),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
       queryClient.invalidateQueries({ queryKey: ['stocks'] });

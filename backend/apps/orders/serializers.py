@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.inventory.serializers import ProductSerializer
+from apps.orders.constants import StockAllocationStrategy
 from apps.orders.validators import validate_products_belong_to_user
 
 from .models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem
@@ -118,3 +119,11 @@ class SalesOrderSerializer(serializers.ModelSerializer):
                 "A sales order must have at least one item."
             )
         return value
+
+
+class ConfirmSalesOrderSerializer(serializers.Serializer):
+    allocation_strategy = serializers.ChoiceField(
+        choices=StockAllocationStrategy.choices,
+        default=StockAllocationStrategy.FIFO,
+        required=False,
+    )

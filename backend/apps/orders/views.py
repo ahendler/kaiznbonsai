@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
 from .models import OrderStatus
-from .serializers import PurchaseOrderSerializer, SalesOrderSerializer
+from .serializers import PurchaseOrderSerializer, SalesOrderSerializer, ConfirmSalesOrderSerializer
 from .selectors import get_purchase_orders_for_user, get_sales_orders_for_user
 from .commands import (
     create_purchase_order, confirm_purchase_order, cancel_purchase_order,
@@ -83,8 +83,13 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         order = self.get_object()
+        serializer = ConfirmSalesOrderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            order = confirm_sales_order(order)
+            order = confirm_sales_order(
+                order,
+                allocation_strategy=serializer.validated_data['allocation_strategy'],
+            )
         except DjangoValidationError as e:
             raise ValidationError(list(e.messages))
         return Response(self.get_serializer(order).data)
