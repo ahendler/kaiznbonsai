@@ -31,7 +31,7 @@ class TestRegistration:
 
     def test_duplicate_email_rejected(self, client, register_url):
         User.objects.create_user(
-            username='alice', email='alice@example.com', password='StrongPass123!'
+            username='alice@example.com', email='alice@example.com', password='StrongPass123!'
         )
         payload = {
             'email': 'alice@example.com',
@@ -40,6 +40,21 @@ class TestRegistration:
         }
         r = client.post(register_url, payload, format='json')
         assert r.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'email' in r.data
+        assert 'already exists' in str(r.data['email'][0]).lower()
+
+    def test_same_email_local_part_different_domain_succeeds(self, client, register_url):
+        User.objects.create_user(
+            username='alice@example.com', email='alice@example.com', password='StrongPass123!'
+        )
+        payload = {
+            'email': 'alice@other.com',
+            'password': 'StrongPass123!',
+            'password_confirm': 'StrongPass123!',
+        }
+        r = client.post(register_url, payload, format='json')
+        assert r.status_code == status.HTTP_201_CREATED
+        assert User.objects.filter(email='alice@other.com').exists()
 
     def test_mismatched_passwords_rejected(self, client, register_url):
         payload = {

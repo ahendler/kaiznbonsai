@@ -4,16 +4,17 @@ from django.core.exceptions import ValidationError
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, OrderStatus
 from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.inventory.commands import record_movement
+from apps.orders.validators import validate_products_belong_to_user
+
+ORDER_NOT_DRAFT = 'Only draft orders can be confirmed.'
+ORDER_ALREADY_CANCELLED = 'Order is already cancelled.'
+ORDER_CANCEL_UNAVAILABLE = (
+    'Cannot cancel this order because no stock was deducted from inventory when it was confirmed.'
+)
 
 
 def _validate_products_belong_to_user(user, items_data: list) -> None:
-    """Ensure every product_id in the order belongs to the requesting user."""
-    product_ids = {item['product_id'] for item in items_data}
-    owned_ids = set(
-        Product.objects.filter(user=user, id__in=product_ids).values_list('id', flat=True)
-    )
-    if owned_ids != product_ids:
-        raise ValidationError("One or more products do not belong to your account.")
+    validate_products_belong_to_user(user, {item['product_id'] for item in items_data})
 
 @transaction.atomic
 def create_purchase_order(user, items_data: list, title: str = None, order_date=None) -> PurchaseOrder:
@@ -51,7 +52,7 @@ def confirm_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
     Iterates over items and creates Stock batches representing the received goods.
     """
     if order.status != OrderStatus.DRAFT:
-        raise ValidationError("Only DRAFT purchase orders can be confirmed.")
+        raise ValidationError(ORDER_NOT_DRAFT)
 
     for item in order.items.all():
         stock = Stock.objects.create(
@@ -84,7 +85,7 @@ def cancel_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
     If any Stock batch has been partially or fully consumed, it raises an error.
     """
     if order.status == OrderStatus.CANCELLED:
-        raise ValidationError("Order is already cancelled.")
+        raise ValidationError(ORDER_ALREADY_CANCELLED)
 
     if order.status == OrderStatus.CONFIRMED:
         # Fetch all stock batches created by this order
@@ -143,7 +144,7 @@ def confirm_sales_order(order: SalesOrder) -> SalesOrder:
     Raises ValidationError if insufficient stock.
     """
     if order.status != OrderStatus.DRAFT:
-        raise ValidationError("Only DRAFT sales orders can be confirmed.")
+        raise ValidationError(ORDER_NOT_DRAFT)
 
     for item in order.items.select_related('product').all():
         remaining_to_deduct = Decimal(str(item.quantity))
@@ -184,7 +185,7 @@ def cancel_sales_order(order: SalesOrder) -> SalesOrder:
     If CONFIRMED, reverses each SALE movement with a matching RETURN on the original batch.
     """
     if order.status == OrderStatus.CANCELLED:
-        raise ValidationError("Order is already cancelled.")
+        raise ValidationError(ORDER_ALREADY_CANCELLED)
 
     if order.status == OrderStatus.CONFIRMED:
         sale_movements = list(
@@ -196,7 +197,10 @@ def cancel_sales_order(order: SalesOrder) -> SalesOrder:
         )
 
         if not sale_movements:
-            raise ValidationError("Cannot cancel: no stock movements found for this order.")
+            # Edge case: status is CONFIRMED but confirm_sales_order never ran (e.g. manual
+            # DB edit). Normal confirms always create SALE movements; cancel needs those to
+            # restore stock, so we block rather than silently mark cancelled.
+            raise ValidationError(ORDER_CANCEL_UNAVAILABLE)
 
         batch_ids = {m.stock_batch_id for m in sale_movements}
         list(Stock.objects.filter(id__in=batch_ids).select_for_update())

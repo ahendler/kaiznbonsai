@@ -260,7 +260,7 @@ class TestSalesOrders:
         so.status = OrderStatus.CONFIRMED
         so.save(update_fields=['status', 'updated_at'])
 
-        with pytest.raises(ValidationError, match="no stock movements"):
+        with pytest.raises(ValidationError, match="no stock was deducted"):
             cancel_sales_order(so)
 
         so.refresh_from_db()
@@ -272,7 +272,7 @@ class TestSalesOrders:
         )
         items_data = [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}]
 
-        with pytest.raises(ValidationError, match="do not belong"):
+        with pytest.raises(ValidationError, match="not found"):
             create_sales_order(other_user, items_data)
 
     def test_cannot_drain_another_users_stock_on_confirm(self, user, product):

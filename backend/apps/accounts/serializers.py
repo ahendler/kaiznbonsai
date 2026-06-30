@@ -20,6 +20,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ('email', 'password', 'password_confirm', 'first_name', 'last_name')
 
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value
+
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
@@ -28,10 +33,9 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm')
         email = validated_data['email']
-        # username is an internal detail required by AbstractUser; it mirrors the
-        # email local part so createsuperuser and admin still work as expected.
-        username = email.split('@')[0]
-        return User.objects.create_user(username=username, **validated_data)
+        # username is an internal detail required by AbstractUser; use the email
+        # so it stays unique and users never see username-collision errors.
+        return User.objects.create_user(username=email, **validated_data)
 
 
 class LoginSerializer(TokenObtainPairSerializer):

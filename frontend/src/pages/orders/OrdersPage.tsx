@@ -1,7 +1,7 @@
 import { Container, Title, Tabs } from '@mantine/core';
 import { IconTruckDelivery, IconCash } from '@tabler/icons-react';
-import { PurchaseOrderTable } from '../../components/orders/PurchaseOrderTable';
-import { SalesOrderTable } from '../../components/orders/SalesOrderTable';
+import { PurchaseOrderTable } from '@/components/orders/PurchaseOrderTable'
+import { SalesOrderTable } from '@/components/orders/SalesOrderTable'
 
 export default function OrdersPage() {
   return (

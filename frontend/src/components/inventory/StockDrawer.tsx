@@ -14,6 +14,7 @@ import {
   Center,
   Tooltip,
   Box,
+  Modal,
 } from '@mantine/core'
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -21,7 +22,7 @@ import { notifications } from '@mantine/notifications'
 import { IconTrash, IconEdit, IconCheck, IconX } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
-import { getApiErrorMessage, getAxiosResponseData } from '@/api/errors'
+import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 
 interface StockFormValues {
   initial_quantity: string
@@ -81,9 +82,9 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       form.reset()
     },
     onError: (error) => {
-      const data = getAxiosResponseData(error)
-      if (data && typeof data === 'object') {
-        form.setErrors(data as Record<string, string>)
+      const formErrors = getFormErrorsFromApi(getAxiosResponseData(error))
+      if (formErrors) {
+        form.setErrors(formErrors)
       } else {
         notifications.show({ title: 'Error', message: 'Failed to add batch. Check your inputs.', color: 'red' })
       }
@@ -104,6 +105,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
 
   // Edit State
   const [editingStockId, setEditingStockId] = useState<string | null>(null)
+  const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{
     lot_code: string
     initial_quantity: number | ''
@@ -125,19 +127,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       setEditingStockId(null)
     },
     onError: (error) => {
-      const data = getAxiosResponseData(error)
-      let message = 'Failed to update batch'
-      if (data && typeof data === 'object') {
-        const record = data as Record<string, unknown>
-        const firstKey = Object.keys(record)[0]
-        const firstError = record[firstKey]
-        if (Array.isArray(firstError)) {
-          message = `${firstKey}: ${String(firstError[0])}`
-        } else if (typeof firstError === 'string') {
-          message = firstError
-        }
-      }
-      notifications.show({ title: 'Error', message, color: 'red' })
+      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to update batch.'), color: 'red' })
     }
   })
 
@@ -352,11 +342,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                   <ActionIcon
                                     color="red"
                                     variant="subtle"
-                                    onClick={() => {
-                                      if (confirm('Are you sure you want to remove this batch?')) {
-                                        deleteMutation.mutate(stock.id)
-                                      }
-                                    }}
+                                    onClick={() => setBatchToDelete(stock.id)}
                                   >
                                     <IconTrash size={16} />
                                   </ActionIcon>
@@ -381,6 +367,33 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
           )}
         </div>
       </Stack>
+
+      <Modal
+        opened={!!batchToDelete}
+        onClose={() => setBatchToDelete(null)}
+        title="Remove stock batch"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm">Are you sure you want to remove this batch? This cannot be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setBatchToDelete(null)}>Cancel</Button>
+            <Button
+              color="red"
+              loading={deleteMutation.isPending}
+              onClick={() => {
+                if (batchToDelete) {
+                  deleteMutation.mutate(batchToDelete, {
+                    onSuccess: () => setBatchToDelete(null),
+                  })
+                }
+              }}
+            >
+              Remove batch
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Drawer>
   )
 }

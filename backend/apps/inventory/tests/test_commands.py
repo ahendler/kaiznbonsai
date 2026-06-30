@@ -107,7 +107,7 @@ class TestRecordMovement:
         assert StockMovement.objects.filter(stock_batch=stock_batch).count() == 1
 
     def test_cross_user_call_raises_validation_error(self, user, other_user, stock_batch):
-        with pytest.raises(ValidationError, match="does not belong"):
+        with pytest.raises(ValidationError, match="not found"):
             record_movement(
                 user=other_user,
                 stock_batch=stock_batch,

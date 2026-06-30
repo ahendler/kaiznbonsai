@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from apps.inventory.models import Product, Stock
 
+PRODUCT_NOT_FOUND = 'Product not found.'
+
 class ProductSerializer(serializers.ModelSerializer):
     # This field will be populated by a database annotation in the ViewSet
     total_stock = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True, default=0)
@@ -76,7 +78,7 @@ class StockSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user:
             if value.user_id != request.user.id:
-                raise serializers.ValidationError("You can only add stock to your own products.")
+                raise serializers.ValidationError(PRODUCT_NOT_FOUND)
         return value
 
     def validate(self, data):
