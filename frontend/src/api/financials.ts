@@ -1,5 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import api from './client';
+
+export const FINANCIALS_QUERY_KEYS = {
+  overall: ['overall-financials'] as const,
+  products: ['product-financials'] as const,
+};
+
+export function invalidateFinancials(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: FINANCIALS_QUERY_KEYS.overall });
+  queryClient.invalidateQueries({ queryKey: FINANCIALS_QUERY_KEYS.products });
+}
 
 export interface OverallFinancials {
   revenue: string;
@@ -10,7 +20,7 @@ export interface OverallFinancials {
 }
 
 export interface ProductFinancials {
-  id: number;
+  id: string;
   name: string;
   sku: string;
   revenue: string;
@@ -32,14 +42,14 @@ const financialsApi = {
 
 export const useOverallFinancials = () => {
   return useQuery({
-    queryKey: ['overall-financials'],
+    queryKey: FINANCIALS_QUERY_KEYS.overall,
     queryFn: financialsApi.getOverall,
   });
 };
 
 export const useProductFinancials = () => {
   return useQuery({
-    queryKey: ['product-financials'],
+    queryKey: FINANCIALS_QUERY_KEYS.products,
     queryFn: financialsApi.getProducts,
   });
 };

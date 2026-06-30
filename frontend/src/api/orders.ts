@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from './client';
 import type { Product, PaginatedResponse } from './inventory';
+import { invalidateFinancials } from './financials';
 
 // TYPES
 export type OrderStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
@@ -180,8 +181,8 @@ export const useConfirmSalesOrder = () => {
     mutationFn: orderApi.confirmSalesOrder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
-      // Confirming an SO consumes stock, invalidate inventory
       queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      invalidateFinancials(queryClient);
     },
   });
 };
@@ -193,6 +194,7 @@ export const useCancelSalesOrder = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] });
       queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      invalidateFinancials(queryClient);
     },
   });
 };
