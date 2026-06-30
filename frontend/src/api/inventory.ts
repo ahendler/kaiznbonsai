@@ -30,6 +30,12 @@ export interface ProductCreatePayload {
 
 export type ProductUpdatePayload = Partial<ProductCreatePayload>
 
+export interface ProductListFilters {
+  search?: string
+  unit_of_measure?: Product['unit_of_measure']
+  in_stock?: boolean
+}
+
 export interface Stock {
   id: string
   product: string // UUID
@@ -63,8 +69,26 @@ export interface StockUpdatePayload {
 // Products API
 // ----------------------------------------------------------------------------
 
-export const listProducts = async (cursor: string | null = null): Promise<PaginatedResponse<Product>> => {
-  const params = cursor ? { cursor } : {}
+export const listProducts = async (
+  cursor: string | null = null,
+  filters: ProductListFilters = {},
+): Promise<PaginatedResponse<Product>> => {
+  const params: Record<string, string> = {}
+  if (cursor) {
+    params.cursor = cursor
+  }
+  const search = filters.search?.trim()
+  if (search) {
+    params.search = search
+  }
+  if (filters.unit_of_measure) {
+    params.unit_of_measure = filters.unit_of_measure
+  }
+  if (filters.in_stock === true) {
+    params.in_stock = 'true'
+  } else if (filters.in_stock === false) {
+    params.in_stock = 'false'
+  }
   const response = await api.get('/inventory/products/', { params })
   return response.data
 }

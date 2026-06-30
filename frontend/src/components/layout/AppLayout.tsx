@@ -27,6 +27,13 @@ const navItems = [
   { label: 'Orders', icon: IconReceipt, path: '/orders' },
 ]
 
+function isNavItemActive(pathname: string, path: string): boolean {
+  if (path === '/') {
+    return pathname === '/'
+  }
+  return pathname.startsWith(path)
+}
+
 export default function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure()
   const navigate = useNavigate()
@@ -43,7 +50,7 @@ export default function AppLayout() {
               <img
                 src="/logo.png"
                 alt="KaiznBonsai Logo"
-                style={{ height: 32, cursor: 'pointer' }}
+                className="h-8 cursor-pointer"
                 onClick={() => navigate('/')}
               />
             </Group>
@@ -80,35 +87,32 @@ export default function AppLayout() {
       <Drawer
         opened={opened}
         onClose={close}
-        title={<img src="/logo-letter.png" alt="KaiznBonsai" style={{ height: 24, display: 'block' }} />}
+        title={
+          <img
+            src="/logo-letter.png"
+            alt="KaiznBonsai"
+            className="block h-6"
+          />
+        }
         position="left"
         padding="md"
         size="sm"
         zIndex={1000}
       >
-        <style>{`
-          .nav-item-hover {
-            transition: transform 0.2s ease, background-color 0.2s ease;
-          }
-          .nav-item-hover:hover {
-            transform: translateX(6px);
-          }
-        `}</style>
         <Stack gap="sm" mt="md">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
-              className="nav-item-hover"
+              className="rounded-lg px-4 py-3 transition-transform duration-200 ease-in-out hover:translate-x-1.5"
               label={<Text size="lg" fw={500}>{item.label}</Text>}
               leftSection={<item.icon size={24} stroke={1.5} />}
-              active={location.pathname.startsWith(item.path)}
+              active={isNavItemActive(location.pathname, item.path)}
               onClick={() => {
                 navigate(item.path)
                 close()
               }}
               variant="light"
               color="green"
-              style={{ borderRadius: 8, padding: '12px 16px' }}
             />
           ))}
         </Stack>

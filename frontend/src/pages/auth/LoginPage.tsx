@@ -5,7 +5,6 @@ import {
   PasswordInput,
   Button,
   Paper,
-  Title,
   Text,
   Container,
   Stack,
@@ -14,7 +13,6 @@ import {
   Center,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
-import { notifications } from '@mantine/notifications'
 import { authApi } from '@/api/auth'
 import { useAuth } from '@/context/AuthContext'
 

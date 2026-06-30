@@ -4,34 +4,59 @@ from django.db import transaction
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import generics
 
 from apps.inventory.commands import record_movement
-from apps.inventory.models import MovementReason, Product, Stock
+from apps.inventory.models import MovementReason, Product, Stock, UnitType
 from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
+
+VALID_UNIT_VALUES = {choice.value for choice in UnitType}
+
 
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
     ordering = ["-created_at"]
+    filter_backends = [SearchFilter]
+    search_fields = ['name', 'sku', 'description']
 
     def get_queryset(self):
         """
         Strictly isolate data: users can only see their own products.
         Annotate the total stock calculated by PostgreSQL to avoid N+1 queries.
         Coalesce ensures that if there are no stock batches, the sum is 0 instead of None.
+
+        Query params:
+        - search: icontains match on name, sku, description (SearchFilter)
+        - unit_of_measure: exact match (KG, G, L, ML, UNIT)
+        - in_stock: true | false — filter by total_stock > 0 or == 0
         """
-        return Product.objects.filter(user=self.request.user).annotate(
+        queryset = Product.objects.filter(user=self.request.user).annotate(
             total_stock=Coalesce(
-                Sum('stock_batches__current_quantity'), 
-                0, 
+                Sum('stock_batches__current_quantity'),
+                0,
                 output_field=DecimalField()
             )
-        ).order_by('-created_at')
+        )
+
+        unit = self.request.query_params.get('unit_of_measure')
+        if unit and unit in VALID_UNIT_VALUES:
+            queryset = queryset.filter(unit_of_measure=unit)
+
+        in_stock = self.request.query_params.get('in_stock')
+        if in_stock is not None:
+            normalized = in_stock.lower()
+            if normalized in ('true', '1'):
+                queryset = queryset.filter(total_stock__gt=0)
+            elif normalized in ('false', '0'):
+                queryset = queryset.filter(total_stock=0)
+
+        return queryset.order_by('-created_at')
 
     def perform_create(self, serializer):
         """

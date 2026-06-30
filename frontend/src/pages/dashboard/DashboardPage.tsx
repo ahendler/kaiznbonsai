@@ -1,29 +1,27 @@
-import { 
-  SimpleGrid, Card, Text, Group, Center, Loader, 
-  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper
-} from '@mantine/core';
-import { 
-  IconCash, IconTrendingUp, IconTrendingDown, IconPackage
-} from '@tabler/icons-react';
-import { useOverallFinancials, useProductFinancials } from '@/api/financials';
+import {
+  SimpleGrid, Card, Text, Group, Center, Loader,
+  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper,
+} from '@mantine/core'
+import {
+  IconCash, IconTrendingUp, IconTrendingDown, IconPackage,
+} from '@tabler/icons-react'
+import { useOverallFinancials, useProductFinancials } from '@/api/financials'
+import { formatCurrency, formatMarginPercent, getMarginColor } from '@/utils/financials'
 
 export default function DashboardPage() {
-  const { data: overall, isLoading: overallLoading } = useOverallFinancials();
-  const { data: products, isLoading: productsLoading } = useProductFinancials();
+  const { data: overall, isLoading: overallLoading } = useOverallFinancials()
+  const { data: products, isLoading: productsLoading } = useProductFinancials()
 
   if (overallLoading || productsLoading) {
-    return <Center h="100%"><Loader /></Center>;
+    return <Center h="100%"><Loader /></Center>
   }
-
-  const formatCurrency = (val: string | number) => 
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val));
 
   const stats = [
     { title: 'Total Revenue', value: formatCurrency(overall?.revenue || 0), icon: IconCash, color: 'blue' },
     { title: 'Gross Profit', value: formatCurrency(overall?.gross_profit || 0), icon: IconTrendingUp, color: 'green' },
     { title: 'COGS', value: formatCurrency(overall?.cogs || 0), icon: IconTrendingDown, color: 'red' },
     { title: 'Inventory Value', value: formatCurrency(overall?.inventory_value || 0), icon: IconPackage, color: 'grape' },
-  ];
+  ]
 
   return (
     <Stack gap="xl">
@@ -33,7 +31,7 @@ export default function DashboardPage() {
           <Text c="dimmed" size="sm">High-level metrics and product performance.</Text>
         </div>
         <Badge size="xl" variant="light" color="blue">
-          Overall Margin: {Number(overall?.margin || 0).toFixed(1)}%
+          Overall Margin: {formatMarginPercent(overall?.margin || 0)}
         </Badge>
       </Group>
 
@@ -72,10 +70,8 @@ export default function DashboardPage() {
           </Table.Thead>
           <Table.Tbody>
             {products?.map((product) => {
-              const marginNum = Number(product.margin);
-              let color = 'green';
-              if (marginNum < 20) color = 'red';
-              else if (marginNum < 40) color = 'yellow';
+              const marginColor = getMarginColor(product.margin)
+              const marginNum = Number(product.margin)
 
               return (
                 <Table.Tr key={product.id}>
@@ -88,16 +84,16 @@ export default function DashboardPage() {
                   </Table.Td>
                   <Table.Td>
                     <Group justify="space-between" mb={4}>
-                      <Text size="sm" fw={500}>{marginNum.toFixed(1)}%</Text>
+                      <Text size="sm" fw={500}>{formatMarginPercent(product.margin)}</Text>
                     </Group>
-                    <Progress value={marginNum} color={color} size="sm" radius="xl" />
+                    <Progress value={marginNum} color={marginColor} size="sm" radius="xl" />
                   </Table.Td>
                 </Table.Tr>
-              );
+              )
             })}
           </Table.Tbody>
         </Table>
       </Paper>
     </Stack>
-  );
+  )
 }

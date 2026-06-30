@@ -88,6 +88,65 @@ class TestPurchaseOrderAPI:
         assert response.status_code == 409
         assert PurchaseOrder.objects.filter(id=po.id).exists()
 
+    def test_create_purchase_order_rejects_empty_items(self, authenticated_client):
+        response = authenticated_client.post(
+            '/api/v1/orders/purchase-orders/',
+            {'items_data': []},
+            format='json',
+        )
+        assert response.status_code == 400
+        assert PurchaseOrder.objects.count() == 0
+
+    def test_create_purchase_order_rejects_missing_unit_cost(self, authenticated_client, product):
+        response = authenticated_client.post(
+            '/api/v1/orders/purchase-orders/',
+            {
+                'items_data': [
+                    {'product_id': product.id, 'quantity': 100, 'lot_code': 'LOT1'}
+                ]
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert PurchaseOrder.objects.count() == 0
+
+    def test_create_purchase_order_rejects_invalid_quantity(self, authenticated_client, product):
+        response = authenticated_client.post(
+            '/api/v1/orders/purchase-orders/',
+            {
+                'items_data': [
+                    {'product_id': product.id, 'quantity': 0, 'unit_cost': 10.50}
+                ]
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert PurchaseOrder.objects.count() == 0
+
+    def test_cannot_create_purchase_order_with_another_users_product(self, api_client):
+        owner = User.objects.create_user(
+            username="po-owner@example.com", email="po-owner@example.com", password="password"
+        )
+        attacker = User.objects.create_user(
+            username="po-attacker@example.com", email="po-attacker@example.com", password="password"
+        )
+        product = Product.objects.create(
+            user=owner, name="Owner Product", sku="PO-OWN-1", unit_of_measure="UNIT"
+        )
+        api_client.force_authenticate(user=attacker)
+
+        response = api_client.post(
+            '/api/v1/orders/purchase-orders/',
+            {
+                'items_data': [
+                    {'product_id': product.id, 'quantity': 10, 'unit_cost': 5.00}
+                ]
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert PurchaseOrder.objects.count() == 0
+
 @pytest.mark.django_db
 class TestSalesOrderAPI:
     def test_create_sales_order(self, authenticated_client, product):
@@ -126,6 +185,41 @@ class TestSalesOrderAPI:
         response = authenticated_client.post(url)
         assert response.status_code == 400
         assert "Insufficient stock" in response.data[0]
+
+    def test_create_sales_order_rejects_empty_items(self, authenticated_client):
+        response = authenticated_client.post(
+            '/api/v1/orders/sales-orders/',
+            {'items_data': []},
+            format='json',
+        )
+        assert response.status_code == 400
+        assert SalesOrder.objects.count() == 0
+
+    def test_create_sales_order_rejects_missing_unit_price(self, authenticated_client, product):
+        response = authenticated_client.post(
+            '/api/v1/orders/sales-orders/',
+            {
+                'items_data': [
+                    {'product_id': product.id, 'quantity': 50}
+                ]
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert SalesOrder.objects.count() == 0
+
+    def test_create_sales_order_rejects_invalid_quantity(self, authenticated_client, product):
+        response = authenticated_client.post(
+            '/api/v1/orders/sales-orders/',
+            {
+                'items_data': [
+                    {'product_id': product.id, 'quantity': -5, 'unit_price': 20.00}
+                ]
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert SalesOrder.objects.count() == 0
 
     def test_cannot_create_sales_order_with_another_users_product(self, api_client):
         owner = User.objects.create_user(

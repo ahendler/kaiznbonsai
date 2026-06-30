@@ -20,7 +20,15 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { notifications } from '@mantine/notifications'
 import { IconTrash, IconEdit, IconCheck, IconX } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
-import type { Stock } from '@/api/inventory'
+import type { StockUpdatePayload } from '@/api/inventory'
+import { getApiErrorMessage, getAxiosResponseData } from '@/api/errors'
+
+interface StockFormValues {
+  initial_quantity: string
+  unit_cost: string
+  lot_code: string
+  best_before: string
+}
 
 interface StockDrawerProps {
   opened: boolean
@@ -44,7 +52,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     enabled: opened && !!productId,
   })
 
-  const form = useForm({
+  const form = useForm<StockFormValues>({
     initialValues: {
       initial_quantity: '',
       unit_cost: '',
@@ -58,7 +66,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
   })
 
   const createMutation = useMutation({
-    mutationFn: (values: any) => createStock({
+    mutationFn: (values: StockFormValues) => createStock({
       product: productId,
       initial_quantity: values.initial_quantity.toString(),
       current_quantity: values.initial_quantity.toString(),
@@ -72,9 +80,10 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['products'] })
       form.reset()
     },
-    onError: (error: any) => {
-      if (error.response?.data && typeof error.response.data === 'object') {
-        form.setErrors(error.response.data)
+    onError: (error) => {
+      const data = getAxiosResponseData(error)
+      if (data && typeof data === 'object') {
+        form.setErrors(data as Record<string, string>)
       } else {
         notifications.show({ title: 'Error', message: 'Failed to add batch. Check your inputs.', color: 'red' })
       }
@@ -88,9 +97,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
     },
-    onError: (error: any) => {
-      const detail = error.response?.data?.detail || 'Failed to delete batch.'
-      notifications.show({ title: 'Error', message: detail, color: 'red' })
+    onError: (error) => {
+      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to delete batch.'), color: 'red' })
     }
   })
 
@@ -109,21 +117,22 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
   })
   
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string, payload: any }) => updateStock(id, payload),
+    mutationFn: ({ id, payload }: { id: string, payload: StockUpdatePayload }) => updateStock(id, payload),
     onSuccess: () => {
       notifications.show({ title: 'Success', message: 'Batch updated', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setEditingStockId(null)
     },
-    onError: (error: any) => {
-      const data = error.response?.data
+    onError: (error) => {
+      const data = getAxiosResponseData(error)
       let message = 'Failed to update batch'
       if (data && typeof data === 'object') {
-        const firstKey = Object.keys(data)[0]
-        const firstError = data[firstKey]
+        const record = data as Record<string, unknown>
+        const firstKey = Object.keys(record)[0]
+        const firstError = record[firstKey]
         if (Array.isArray(firstError)) {
-          message = `${firstKey}: ${firstError[0]}`
+          message = `${firstKey}: ${String(firstError[0])}`
         } else if (typeof firstError === 'string') {
           message = firstError
         }
@@ -285,7 +294,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                 loading={updateMutation.isPending}
                                 onClick={() => {
                                   if (editValues.initial_quantity !== '' && editValues.unit_cost !== '') {
-                                    const payload: any = {
+                                    const payload: StockUpdatePayload = {
                                       lot_code: editValues.lot_code || undefined,
                                       initial_quantity: editValues.initial_quantity.toString(),
                                       unit_cost: editValues.unit_cost.toString(),

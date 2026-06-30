@@ -132,6 +132,84 @@ class TestProductTenantIsolation:
 
 
 # ---------------------------------------------------------------------------
+# Product list search & filters
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestProductListFilters:
+    def test_search_by_name(self, client_a, user_a):
+        Product.objects.create(user=user_a, name='Matcha Powder', sku='MAT-1', unit_of_measure='KG')
+        Product.objects.create(user=user_a, name='Oat Milk', sku='OAT-1', unit_of_measure='L')
+
+        r = client_a.get(PRODUCTS_URL, {'search': 'matcha'})
+        assert r.status_code == status.HTTP_200_OK
+        names = [p['name'] for p in r.data['results']]
+        assert names == ['Matcha Powder']
+
+    def test_search_by_sku(self, client_a, user_a):
+        Product.objects.create(user=user_a, name='Product A', sku='SKU-ABC', unit_of_measure='UNIT')
+        Product.objects.create(user=user_a, name='Product B', sku='SKU-XYZ', unit_of_measure='UNIT')
+
+        r = client_a.get(PRODUCTS_URL, {'search': 'abc'})
+        assert r.status_code == status.HTTP_200_OK
+        assert len(r.data['results']) == 1
+        assert r.data['results'][0]['sku'] == 'SKU-ABC'
+
+    def test_filter_by_unit_of_measure(self, client_a, user_a):
+        Product.objects.create(user=user_a, name='Flour', sku='FL-1', unit_of_measure='KG')
+        Product.objects.create(user=user_a, name='Juice', sku='JU-1', unit_of_measure='L')
+
+        r = client_a.get(PRODUCTS_URL, {'unit_of_measure': 'L'})
+        assert r.status_code == status.HTTP_200_OK
+        assert len(r.data['results']) == 1
+        assert r.data['results'][0]['name'] == 'Juice'
+
+    def test_filter_in_stock_excludes_zero_stock(self, client_a, user_a):
+        stocked = Product.objects.create(user=user_a, name='Stocked', sku='ST-1', unit_of_measure='UNIT')
+        Product.objects.create(user=user_a, name='Empty', sku='EM-1', unit_of_measure='UNIT')
+        make_stock(user_a, stocked, 10)
+
+        r = client_a.get(PRODUCTS_URL, {'in_stock': 'true'})
+        assert r.status_code == status.HTTP_200_OK
+        names = [p['name'] for p in r.data['results']]
+        assert names == ['Stocked']
+
+    def test_filter_out_of_stock_only(self, client_a, user_a):
+        stocked = Product.objects.create(user=user_a, name='Stocked', sku='ST-2', unit_of_measure='UNIT')
+        Product.objects.create(user=user_a, name='Empty', sku='EM-2', unit_of_measure='UNIT')
+        make_stock(user_a, stocked, 10)
+
+        r = client_a.get(PRODUCTS_URL, {'in_stock': 'false'})
+        assert r.status_code == status.HTTP_200_OK
+        names = [p['name'] for p in r.data['results']]
+        assert names == ['Empty']
+
+    def test_combined_search_unit_and_in_stock(self, client_a, user_a):
+        matcha = Product.objects.create(user=user_a, name='Matcha', sku='MAT-2', unit_of_measure='KG')
+        Product.objects.create(user=user_a, name='Matcha Syrup', sku='MAT-3', unit_of_measure='L')
+        Product.objects.create(user=user_a, name='Matcha Zero', sku='MAT-4', unit_of_measure='KG')
+        make_stock(user_a, matcha, 5)
+
+        r = client_a.get(PRODUCTS_URL, {
+            'search': 'matcha',
+            'unit_of_measure': 'KG',
+            'in_stock': 'true',
+        })
+        assert r.status_code == status.HTTP_200_OK
+        names = [p['name'] for p in r.data['results']]
+        assert names == ['Matcha']
+
+    def test_search_does_not_leak_other_users_products(self, client_a, user_a, user_b):
+        Product.objects.create(user=user_a, name='Private Tea', sku='PT-1', unit_of_measure='KG')
+        Product.objects.create(user=user_b, name='Public Tea', sku='PT-2', unit_of_measure='KG')
+
+        r = client_a.get(PRODUCTS_URL, {'search': 'tea'})
+        assert r.status_code == status.HTTP_200_OK
+        assert len(r.data['results']) == 1
+        assert r.data['results'][0]['name'] == 'Private Tea'
+
+
+# ---------------------------------------------------------------------------
 # Tenant Isolation: Stocks
 # ---------------------------------------------------------------------------
 

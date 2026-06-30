@@ -15,11 +15,13 @@ import {
   CopyButton,
   Modal,
   Box,
+  TextInput,
+  Select,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { useIntersection } from '@mantine/hooks'
+import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hooks'
 import {
   IconPlus,
   IconEdit,
@@ -27,12 +29,28 @@ import {
   IconBoxSeam,
   IconCopy,
   IconCheck,
+  IconSearch,
 } from '@tabler/icons-react'
 import { listProducts, deleteProduct } from '@/api/inventory'
-import type { Product } from '@/api/inventory'
-import { useDisclosure } from '@mantine/hooks'
+import type { Product, ProductListFilters } from '@/api/inventory'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
 import StockDrawer from '@/components/inventory/StockDrawer'
+
+const UNIT_FILTER_OPTIONS = [
+  { value: 'KG', label: 'Kilogram (KG)' },
+  { value: 'G', label: 'Gram (G)' },
+  { value: 'L', label: 'Liter (L)' },
+  { value: 'ML', label: 'Milliliter (mL)' },
+  { value: 'UNIT', label: 'Unit' },
+] as const
+
+type StockFilter = 'all' | 'in_stock' | 'out_of_stock'
+
+const STOCK_FILTER_OPTIONS = [
+  { value: 'all', label: 'All stock' },
+  { value: 'in_stock', label: 'In stock only' },
+  { value: 'out_of_stock', label: 'Out of stock only' },
+] as const
 
 const CopyAction = ({ value }: { value: string }) => (
   <CopyButton value={value} timeout={2000}>
@@ -46,12 +64,36 @@ const CopyAction = ({ value }: { value: string }) => (
   </CopyButton>
 )
 
-const TruncatedTextWithTooltip = ({ text, ...props }: { text: string } & TextProps) => {
+const TruncatedTextWithTooltip = ({
+  text,
+  multiline,
+  tooltipWidth,
+  ...props
+}: {
+  text: string
+  multiline?: boolean
+  tooltipWidth?: number
+} & TextProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const [isTruncated, setIsTruncated] = useState(false)
+  const maxWidth = tooltipWidth ?? 320
 
   return (
-    <Tooltip label={text} withArrow disabled={!isTruncated}>
+    <Tooltip
+      withArrow
+      disabled={!isTruncated}
+      multiline={multiline}
+      maw={multiline ? maxWidth : undefined}
+      label={
+        multiline ? (
+          <Text size="sm" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {text}
+          </Text>
+        ) : (
+          text
+        )
+      }
+    >
       <Text
         ref={ref}
         truncate="end"
@@ -69,6 +111,18 @@ const TruncatedTextWithTooltip = ({ text, ...props }: { text: string } & TextPro
 }
 
 export default function ProductListPage() {
+  const [search, setSearch] = useState('')
+  const [unitFilter, setUnitFilter] = useState<Product['unit_of_measure'] | null>(null)
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
+
+  const listFilters: ProductListFilters = {
+    search: debouncedSearch,
+    ...(unitFilter ? { unit_of_measure: unitFilter } : {}),
+    ...(stockFilter === 'in_stock' ? { in_stock: true } : {}),
+    ...(stockFilter === 'out_of_stock' ? { in_stock: false } : {}),
+  }
+
   const {
     data,
     fetchNextPage,
@@ -76,8 +130,8 @@ export default function ProductListPage() {
     isFetchingNextPage,
     status,
   } = useInfiniteQuery({
-    queryKey: ['products', 'infinite'],
-    queryFn: ({ pageParam }) => listProducts(pageParam as string | null),
+    queryKey: ['products', 'infinite', listFilters],
+    queryFn: ({ pageParam }) => listProducts(pageParam as string | null, listFilters),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null
@@ -124,9 +178,7 @@ export default function ProductListPage() {
   }
 
   // Intersection observer for infinite scrolling
-  const containerRef = useRef<HTMLDivElement>(null)
   const { ref, entry } = useIntersection({
-    root: containerRef.current,
     threshold: 1,
   })
 
@@ -137,6 +189,7 @@ export default function ProductListPage() {
   }, [entry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const products = data?.pages.flatMap((page) => page.results) ?? []
+  const hasActiveFilters = Boolean(debouncedSearch || unitFilter || stockFilter !== 'all')
 
   return (
     <Container size="xl" p={0}>
@@ -149,6 +202,30 @@ export default function ProductListPage() {
         >
           Add Product
         </Button>
+      </Group>
+
+      <Group align="flex-end" mb="md" wrap="wrap" gap="md">
+        <TextInput
+          className="min-w-[220px] flex-1"
+          placeholder="Search by name or SKU"
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
+        <Select
+          className="w-[180px]"
+          placeholder="All units"
+          clearable
+          data={[...UNIT_FILTER_OPTIONS]}
+          value={unitFilter}
+          onChange={(value) => setUnitFilter(value as Product['unit_of_measure'] | null)}
+        />
+        <Select
+          className="w-[200px]"
+          data={[...STOCK_FILTER_OPTIONS]}
+          value={stockFilter}
+          onChange={(value) => setStockFilter((value as StockFilter | null) ?? 'all')}
+        />
       </Group>
 
       {status === 'pending' ? (
@@ -166,54 +243,60 @@ export default function ProductListPage() {
           <Stack align="center" gap="sm">
             <IconBoxSeam size={48} color="var(--mantine-color-gray-4)" />
             <Text c="dimmed" size="lg" fw={500}>
-              No products found
+              {hasActiveFilters ? 'No products match your filters' : 'No products found'}
             </Text>
             <Text c="dimmed" size="sm">
-              Get started by adding your first product.
+              {hasActiveFilters
+                ? 'Try adjusting search, unit, or stock filters.'
+                : 'Get started by adding your first product.'}
             </Text>
-            <Button
-              variant="light"
-              color="green"
-              mt="sm"
-              onClick={handleAddProduct}
-            >
-              Add Product
-            </Button>
+            {!hasActiveFilters && (
+              <Button
+                variant="light"
+                color="green"
+                mt="sm"
+                onClick={handleAddProduct}
+              >
+                Add Product
+              </Button>
+            )}
           </Stack>
         </Center>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="overflow-x-auto">
           <Table verticalSpacing="sm" striped highlightOnHover withColumnBorders>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={{ width: '100%' }}>Name</Table.Th>
-                <Table.Th style={{ whiteSpace: 'nowrap' }}>SKU</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Unit</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Total Stock</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Actions</Table.Th>
+                <Table.Th className="w-full">Name</Table.Th>
+                <Table.Th className="whitespace-nowrap">SKU</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Unit</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Total Stock</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {products.map((product) => (
                 <Table.Tr key={product.id}>
-                  <Table.Td style={{ maxWidth: 250 }}>
+                  <Table.Td className="max-w-[250px]">
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="min-w-0 flex-1">
                         <TruncatedTextWithTooltip text={product.name} fw={500} />
                         {product.description && (
-                          <Tooltip label={product.description} multiline w={250} withArrow>
-                            <Text size="xs" c="dimmed" truncate="end">
-                              {product.description}
-                            </Text>
-                          </Tooltip>
+                          <TruncatedTextWithTooltip
+                            text={product.description}
+                            size="xs"
+                            c="dimmed"
+                            multiline
+                            tooltipWidth={360}
+                          />
                         )}
                       </div>
                       <CopyAction value={product.name} />
                     </Group>
                   </Table.Td>
-                  <Table.Td style={{ maxWidth: 200 }}>
+                  <Table.Td className="max-w-[200px]">
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="min-w-0 flex-1">
                         <TruncatedTextWithTooltip 
                           text={product.sku} 
                           size="sm" 
@@ -260,7 +343,7 @@ export default function ProductListPage() {
                               variant="subtle"
                               color="gray"
                               disabled
-                              style={{ pointerEvents: 'none' }}
+                              className="pointer-events-none"
                             >
                               <IconTrash size={16} />
                             </ActionIcon>
@@ -285,7 +368,7 @@ export default function ProductListPage() {
           </Table>
 
           {/* Invisible element at the bottom to trigger infinite scroll */}
-          <div ref={ref} style={{ height: 20, marginTop: 10 }}>
+          <div ref={ref} className="mt-2.5 h-5">
             {isFetchingNextPage && (
               <Center>
                 <Text size="sm" c="dimmed">Loading more...</Text>
@@ -313,7 +396,7 @@ export default function ProductListPage() {
       >
         <Stack gap="xs" mb="lg">
           <Text size="sm">Are you sure you want to delete:</Text>
-          <div style={{ overflow: 'hidden' }}>
+          <div className="overflow-hidden">
             <TruncatedTextWithTooltip text={productToDelete?.name || ''} fw={600} />
           </div>
           <Text size="sm" c="dimmed">
