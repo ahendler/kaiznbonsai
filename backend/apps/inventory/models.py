@@ -42,3 +42,40 @@ class Stock(TenantOwnedModel):
 
     def __str__(self):
         return f"{self.product.name} - Batch {self.lot_code or self.id.hex[:8]} ({self.current_quantity})"
+
+
+class MovementReason(models.TextChoices):
+    RECEIPT = 'RECEIPT', 'Receipt'
+    SALE = 'SALE', 'Sale'
+    RETURN = 'RETURN', 'Return'
+    ADJUSTMENT = 'ADJUSTMENT', 'Adjustment'
+
+
+class StockMovement(TenantOwnedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stock_batch = models.ForeignKey(
+        Stock, on_delete=models.CASCADE, related_name='movements'
+    )
+    sales_order_item = models.ForeignKey(
+        'orders.SalesOrderItem',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='stock_movements',
+    )
+    purchase_order_item = models.ForeignKey(
+        'orders.PurchaseOrderItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_movements',
+    )
+    delta = models.DecimalField(max_digits=12, decimal_places=3)
+    reason = models.CharField(max_length=20, choices=MovementReason.choices)
+
+    class Meta:
+        db_table = 'inventory_stock_movements'
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.reason} {self.delta} on batch {self.stock_batch_id}"
