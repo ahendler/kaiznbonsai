@@ -5,8 +5,9 @@ from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
-from .models import PurchaseOrder, SalesOrder, OrderStatus
+from .models import OrderStatus
 from .serializers import PurchaseOrderSerializer, SalesOrderSerializer
+from .selectors import get_purchase_orders_for_user, get_sales_orders_for_user
 from .commands import (
     create_purchase_order, confirm_purchase_order, cancel_purchase_order,
     create_sales_order, confirm_sales_order, cancel_sales_order
@@ -17,7 +18,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return PurchaseOrder.objects.filter(user=self.request.user).prefetch_related('items__product')
+        return get_purchase_orders_for_user(self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -64,7 +65,7 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return SalesOrder.objects.filter(user=self.request.user).prefetch_related('items__product')
+        return get_sales_orders_for_user(self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
