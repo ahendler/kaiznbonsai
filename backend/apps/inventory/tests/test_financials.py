@@ -105,12 +105,16 @@ def test_product_financials_with_data(test_user, financial_data):
     assert prod1.cogs == Decimal('200.00')
     assert prod1.profit == Decimal('300.00')
     assert round(prod1.margin, 2) == Decimal('60.00')
+    assert prod1.qty_purchased == Decimal('100.000')
+    assert prod1.qty_sold == Decimal('20.000')
 
     prod2 = products.get(id=p2.id)
     assert prod2.revenue == Decimal('100.00')
     assert prod2.cogs == Decimal('50.00')
     assert prod2.profit == Decimal('50.00')
     assert round(prod2.margin, 2) == Decimal('50.00')
+    assert prod2.qty_purchased == Decimal('50.000')
+    assert prod2.qty_sold == Decimal('10.000')
 
 
 @pytest.mark.django_db
@@ -129,6 +133,10 @@ def test_cogs_excludes_cancelled_sales_orders(test_user, financial_data):
     assert data['cogs'] == Decimal('0.00')
     assert data['revenue'] == Decimal('0.00')
     assert data['gross_profit'] == Decimal('0.00')
+
+    products = get_products_with_financials(test_user)
+    for product in products:
+        assert product.qty_sold == Decimal('0.000')
 
 
 @pytest.mark.django_db
@@ -150,3 +158,6 @@ def test_financials_api_endpoints(auth_client, financial_data):
     p1_data = next(p for p in products if p['sku'] == 'P1')
     assert float(p1_data['revenue']) == 500.00
     assert float(p1_data['profit']) == 300.00
+    assert float(p1_data['qty_purchased']) == 100.0
+    assert float(p1_data['qty_sold']) == 20.0
+    assert p1_data['unit_of_measure'] == 'KG'

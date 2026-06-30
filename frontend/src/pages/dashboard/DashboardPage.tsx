@@ -6,7 +6,7 @@ import {
   IconCash, IconTrendingUp, IconTrendingDown, IconPackage,
 } from '@tabler/icons-react'
 import { useOverallFinancials, useProductFinancials } from '@/api/financials'
-import { formatCurrency, formatMarginPercent, getMarginColor } from '@/utils/financials'
+import { formatCurrency, formatMarginPercent, formatQuantity, getMarginColor } from '@/utils/financials'
 
 export default function DashboardPage() {
   const { data: overall, isLoading: overallLoading } = useOverallFinancials()
@@ -62,6 +62,8 @@ export default function DashboardPage() {
             <Table.Tr>
               <Table.Th>Product</Table.Th>
               <Table.Th>SKU</Table.Th>
+              <Table.Th>Qty Purchased</Table.Th>
+              <Table.Th>Qty Sold</Table.Th>
               <Table.Th>Revenue</Table.Th>
               <Table.Th>COGS</Table.Th>
               <Table.Th>Profit</Table.Th>
@@ -77,6 +79,8 @@ export default function DashboardPage() {
                 <Table.Tr key={product.id}>
                   <Table.Td fw={500}>{product.name}</Table.Td>
                   <Table.Td><Badge variant="outline" color="gray">{product.sku}</Badge></Table.Td>
+                  <Table.Td>{formatQuantity(product.qty_purchased)} {product.unit_of_measure}</Table.Td>
+                  <Table.Td>{formatQuantity(product.qty_sold)} {product.unit_of_measure}</Table.Td>
                   <Table.Td>{formatCurrency(product.revenue)}</Table.Td>
                   <Table.Td>{formatCurrency(product.cogs)}</Table.Td>
                   <Table.Td fw={600} c={Number(product.profit) < 0 ? 'red' : 'green'}>

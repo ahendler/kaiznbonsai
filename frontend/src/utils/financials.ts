@@ -12,3 +12,9 @@ export function getMarginColor(margin: string | number): 'green' | 'yellow' | 'r
 export function formatMarginPercent(margin: string | number): string {
   return `${Number(margin).toFixed(1)}%`
 }
+
+export function formatQuantity(qty: string | number): string {
+  const n = Number(qty)
+  if (Number.isInteger(n)) return String(n)
+  return n.toFixed(3).replace(/\.?0+$/, '')
+}

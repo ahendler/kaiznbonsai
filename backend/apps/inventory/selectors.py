@@ -68,9 +68,30 @@ def get_products_with_financials(user):
         total=Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField())
     ).values('total')
 
+    qty_sold_sq = StockMovement.objects.filter(
+        stock_batch__product=OuterRef('pk'),
+        user=user,
+        reason=MovementReason.SALE,
+        sales_order_item__order__status=OrderStatus.CONFIRMED,
+    ).values('stock_batch__product').annotate(
+        total=Sum(-F('delta'), output_field=DecimalField())
+    ).values('total')
+
+    qty_purchased_sq = StockMovement.objects.filter(
+        stock_batch__product=OuterRef('pk'),
+        user=user,
+        reason=MovementReason.RECEIPT,
+    ).values('stock_batch__product').annotate(
+        total=Sum(F('delta'), output_field=DecimalField())
+    ).values('total')
+
+    zero_qty = Value(Decimal('0.000'), output_field=DecimalField(max_digits=12, decimal_places=3))
+
     products = Product.objects.filter(user=user).annotate(
         revenue=Coalesce(Subquery(revenue_sq), Value(Decimal('0.00'), output_field=DecimalField())),
         cogs=Coalesce(Subquery(cogs_sq), Value(Decimal('0.00'), output_field=DecimalField())),
+        qty_sold=Coalesce(Subquery(qty_sold_sq), zero_qty),
+        qty_purchased=Coalesce(Subquery(qty_purchased_sq), zero_qty),
     ).annotate(
         profit=F('revenue') - F('cogs')
     ).annotate(

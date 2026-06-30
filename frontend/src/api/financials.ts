@@ -23,6 +23,9 @@ export interface ProductFinancials {
   id: string;
   name: string;
   sku: string;
+  unit_of_measure: 'KG' | 'G' | 'L' | 'ML' | 'UNIT';
+  qty_purchased: string;
+  qty_sold: string;
   revenue: string;
   cogs: string;
   profit: string;
