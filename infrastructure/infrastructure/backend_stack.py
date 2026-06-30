@@ -46,6 +46,9 @@ class BackendStack(Stack):
         eb_instance_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryReadOnly")
         )
+        eb_instance_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
+        )
 
         eb_instance_profile = iam.CfnInstanceProfile(
             self, "EBInstanceProfile", roles=[eb_instance_role.role_name]

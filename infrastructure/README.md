@@ -80,6 +80,7 @@ cdk deploy KaiznBonsaiFrontendStack
 | `CloudFrontDistributionId` | `CLOUDFRONT_DIST_ID` |
 | `EBDeployBucketName` | `EB_DEPLOY_BUCKET` |
 | `EBEnvironmentURL` | Internal EB endpoint — not exposed publicly |
+| — | `DEMO_USER_PASSWORD` (prod environment secret for `seed-demo.yml`) |
 
 Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 
@@ -90,6 +91,7 @@ Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 | `test.yml` | `backend/**`, `docker-compose.yml` | Run pytest in Docker |
 | `deploy-web.yml` | `frontend/**`, `frontend_stack.py` | Build → S3 sync → CloudFront invalidation |
 | `deploy-backend.yml` | `backend/**`, `backend_stack.py` | Build image → ECR push → EB version update |
+| `seed-demo.yml` | Manual (`workflow_dispatch`) | Seed `demo@example.com` on production via SSM |
 
 ### Backend deploy flow
 
@@ -97,6 +99,10 @@ Workflows assume IAM role `GitHubActionsKaiznBonsaiRole` via OIDC.
 2. Substitute `__BACKEND_IMAGE__` in `backend/docker-compose.yml` (CI workspace only; committed file keeps the placeholder)
 3. Zip the compose manifest → upload to the EB deploy bucket
 4. Create EB application version → update `KaiznBonsai-Prod`
+
+### Demo seed on production
+
+Run the **Seed Demo Data** workflow in GitHub Actions (`seed-demo.yml`). It runs `python manage.py generate_seed_data` on the EB instance via SSM. Only data owned by `demo@example.com` is reset — other users are untouched. The demo password comes from the `DEMO_USER_PASSWORD` GitHub secret (prod environment).
 
 ## Local development
 
