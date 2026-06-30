@@ -3,10 +3,12 @@ import {
   useContext,
   useReducer,
   useEffect,
+  useLayoutEffect,
   type ReactNode,
 } from 'react'
 import type { User } from '@/types/auth'
 import type { AuthAction } from '@/types/AuthContextTypes'
+import { setAccessToken } from '@/api/authToken'
 
 // ---------------------------------------------------------------------------
 // State & actions
@@ -66,16 +68,12 @@ export function useAuth(): AuthContextValue {
 // Provider
 // ---------------------------------------------------------------------------
 
-// Exported so the axios client can read the token without going through
-// React hooks (interceptors run outside the component tree).
-export let getAccessToken: () => string | null = () => null
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState)
 
-  // Keep the module-level getter in sync with the reducer state so the
-  // axios request interceptor always has the latest token.
-  getAccessToken = () => state.accessToken
+  useLayoutEffect(() => {
+    setAccessToken(state.accessToken)
+  }, [state.accessToken])
 
   useEffect(() => {
     // Attempt a silent refresh on mount. If a valid httpOnly cookie exists,
@@ -85,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_LOADING', payload: false })
       })
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <AuthContext.Provider value={{ state, dispatch }}>

@@ -4,7 +4,9 @@ import { notifications } from '@mantine/notifications';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { listProducts } from '../../api/inventory';
+import type { Product } from '../../api/inventory';
 import { useCreateSalesOrder } from '../../api/orders';
+import { getApiErrorMessage } from '../../api/errors';
 
 interface Props {
   opened: boolean;
@@ -38,7 +40,7 @@ export function SalesOrderDrawer({ opened, onClose }: Props) {
             const index = parseInt(match[1], 10);
             const productId = values.items[index]?.product_id;
             if (productId) {
-              const product = products.find((p: any) => p.id.toString() === productId);
+              const product = products.find((p: Product) => p.id.toString() === productId);
               if (product && parseFloat(product.total_stock) < value) {
                 return `Insufficient stock (Available: ${product.total_stock})`;
               }
@@ -51,7 +53,7 @@ export function SalesOrderDrawer({ opened, onClose }: Props) {
     }
   });
 
-  const productOptions = products?.map((p: any) => ({
+  const productOptions = products?.map((p: Product) => ({
     value: p.id.toString(),
     label: `${p.name} (${p.sku}) [${p.unit_of_measure}] - Avail: ${parseFloat(p.total_stock)}`
   })) || [];
@@ -69,8 +71,8 @@ export function SalesOrderDrawer({ opened, onClose }: Props) {
         form.reset();
         onClose();
       },
-      onError: (error: any) => {
-        notifications.show({ title: 'Error', message: "Failed to create order: " + (error.response?.data?.[0] || error.message), color: 'red' });
+      onError: (error) => {
+        notifications.show({ title: 'Error', message: "Failed to create order: " + getApiErrorMessage(error), color: 'red' });
       }
     });
   });
@@ -86,14 +88,14 @@ export function SalesOrderDrawer({ opened, onClose }: Props) {
           />
           <Text fw={500} size="sm">Line Items</Text>
           {form.values.items.map((_item, index) => (
-            <Box key={index} p="sm" style={{ border: '1px solid #eee', borderRadius: 8 }}>
+            <Box key={index} p="sm" className="rounded-lg border border-gray-200">
               <Group align="flex-end" mb="sm">
                 <Select
                   label="Product"
                   placeholder="Select product"
                   data={productOptions}
                   searchable
-                  style={{ flex: 1 }}
+                  className="flex-1"
                   withAsterisk
                   {...form.getInputProps(`items.${index}.product_id`)}
                 />

@@ -46,12 +46,36 @@ const CopyAction = ({ value }: { value: string }) => (
   </CopyButton>
 )
 
-const TruncatedTextWithTooltip = ({ text, ...props }: { text: string } & TextProps) => {
+const TruncatedTextWithTooltip = ({
+  text,
+  multiline,
+  tooltipWidth,
+  ...props
+}: {
+  text: string
+  multiline?: boolean
+  tooltipWidth?: number
+} & TextProps) => {
   const ref = useRef<HTMLDivElement>(null)
   const [isTruncated, setIsTruncated] = useState(false)
+  const maxWidth = tooltipWidth ?? 320
 
   return (
-    <Tooltip label={text} withArrow disabled={!isTruncated}>
+    <Tooltip
+      withArrow
+      disabled={!isTruncated}
+      multiline={multiline}
+      maw={multiline ? maxWidth : undefined}
+      label={
+        multiline ? (
+          <Text size="sm" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {text}
+          </Text>
+        ) : (
+          text
+        )
+      }
+    >
       <Text
         ref={ref}
         truncate="end"
@@ -124,9 +148,7 @@ export default function ProductListPage() {
   }
 
   // Intersection observer for infinite scrolling
-  const containerRef = useRef<HTMLDivElement>(null)
   const { ref, entry } = useIntersection({
-    root: containerRef.current,
     threshold: 1,
   })
 
@@ -182,38 +204,40 @@ export default function ProductListPage() {
           </Stack>
         </Center>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="overflow-x-auto">
           <Table verticalSpacing="sm" striped highlightOnHover withColumnBorders>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th style={{ width: '100%' }}>Name</Table.Th>
-                <Table.Th style={{ whiteSpace: 'nowrap' }}>SKU</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Unit</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Total Stock</Table.Th>
-                <Table.Th ta="center" style={{ whiteSpace: 'nowrap' }}>Actions</Table.Th>
+                <Table.Th className="w-full">Name</Table.Th>
+                <Table.Th className="whitespace-nowrap">SKU</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Unit</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Total Stock</Table.Th>
+                <Table.Th ta="center" className="whitespace-nowrap">Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {products.map((product) => (
                 <Table.Tr key={product.id}>
-                  <Table.Td style={{ maxWidth: 250 }}>
+                  <Table.Td className="max-w-[250px]">
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="min-w-0 flex-1">
                         <TruncatedTextWithTooltip text={product.name} fw={500} />
                         {product.description && (
-                          <Tooltip label={product.description} multiline w={250} withArrow>
-                            <Text size="xs" c="dimmed" truncate="end">
-                              {product.description}
-                            </Text>
-                          </Tooltip>
+                          <TruncatedTextWithTooltip
+                            text={product.description}
+                            size="xs"
+                            c="dimmed"
+                            multiline
+                            tooltipWidth={360}
+                          />
                         )}
                       </div>
                       <CopyAction value={product.name} />
                     </Group>
                   </Table.Td>
-                  <Table.Td style={{ maxWidth: 200 }}>
+                  <Table.Td className="max-w-[200px]">
                     <Group gap="xs" wrap="nowrap">
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="min-w-0 flex-1">
                         <TruncatedTextWithTooltip 
                           text={product.sku} 
                           size="sm" 
@@ -260,7 +284,7 @@ export default function ProductListPage() {
                               variant="subtle"
                               color="gray"
                               disabled
-                              style={{ pointerEvents: 'none' }}
+                              className="pointer-events-none"
                             >
                               <IconTrash size={16} />
                             </ActionIcon>
@@ -285,7 +309,7 @@ export default function ProductListPage() {
           </Table>
 
           {/* Invisible element at the bottom to trigger infinite scroll */}
-          <div ref={ref} style={{ height: 20, marginTop: 10 }}>
+          <div ref={ref} className="mt-2.5 h-5">
             {isFetchingNextPage && (
               <Center>
                 <Text size="sm" c="dimmed">Loading more...</Text>
@@ -313,7 +337,7 @@ export default function ProductListPage() {
       >
         <Stack gap="xs" mb="lg">
           <Text size="sm">Are you sure you want to delete:</Text>
-          <div style={{ overflow: 'hidden' }}>
+          <div className="overflow-hidden">
             <TruncatedTextWithTooltip text={productToDelete?.name || ''} fw={600} />
           </div>
           <Text size="sm" c="dimmed">

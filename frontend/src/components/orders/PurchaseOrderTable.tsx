@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Modal, Stack, Tooltip, Box } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconX, IconTrash } from '@tabler/icons-react';
+import { IconCheck, IconX } from '@tabler/icons-react';
 import { usePurchaseOrders, useConfirmPurchaseOrder, useCancelPurchaseOrder } from '../../api/orders';
+import type { PurchaseOrder } from '../../api/orders';
+import { getApiErrorMessage } from '../../api/errors';
 import { PurchaseOrderDrawer } from './PurchaseOrderDrawer';
 import { useDisclosure } from '@mantine/hooks';
 
@@ -12,7 +14,7 @@ export function PurchaseOrderTable() {
   const cancelMutation = useCancelPurchaseOrder();
   const [opened, { open, close }] = useDisclosure(false);
   const [actionOrder, setActionOrder] = useState<{ id: number, action: 'confirm' | 'cancel' } | null>(null);
-  const [viewOrder, setViewOrder] = useState<any | null>(null);
+  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null);
 
   const orders = ordersData?.pages.flatMap(page => page.results) || [];
 
@@ -21,16 +23,15 @@ export function PurchaseOrderTable() {
   const handleConfirm = (id: number) => {
     confirmMutation.mutate(id, {
       onSuccess: () => notifications.show({ title: 'Confirmed', message: "Order confirmed. Stock has been generated!", color: 'green' }),
-      onError: (err: any) => notifications.show({ title: 'Error', message: "Failed to confirm: " + err.message, color: 'red' })
+      onError: (err) => notifications.show({ title: 'Error', message: "Failed to confirm: " + getApiErrorMessage(err), color: 'red' })
     });
   };
 
   const handleCancel = (id: number) => {
     cancelMutation.mutate(id, {
       onSuccess: () => notifications.show({ title: 'Cancelled', message: "Order cancelled.", color: 'blue' }),
-      onError: (err: any) => {
-        const errorMsg = err.response?.data?.[0] || err.message;
-        notifications.show({ title: 'Cannot Cancel', message: errorMsg, color: 'red', autoClose: 6000 });
+      onError: (err) => {
+        notifications.show({ title: 'Cannot Cancel', message: getApiErrorMessage(err), color: 'red', autoClose: 6000 });
       }
     });
   };
@@ -181,7 +182,7 @@ export function PurchaseOrderTable() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {viewOrder?.items.map((item: any) => (
+            {viewOrder?.items.map((item) => (
               <Table.Tr key={item.id}>
                 <Table.Td>
                   <Text fw={500}>{item.product_details?.name}</Text>
@@ -198,7 +199,7 @@ export function PurchaseOrderTable() {
         </Table>
         <Group justify="space-between" mt="xl">
           <Text fw={600}>
-            Total Price: ${viewOrder?.items.reduce((sum: number, item: any) => sum + (parseFloat(item.quantity) * parseFloat(item.unit_cost)), 0).toFixed(2)}
+            Total Price: ${viewOrder?.items.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unit_cost)), 0).toFixed(2)}
           </Text>
           <Button variant="default" onClick={() => setViewOrder(null)}>Close</Button>
         </Group>

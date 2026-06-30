@@ -33,7 +33,7 @@ Also runs in CI on push/PR to `main` (`.github/workflows/test.yml`).
 | Path | Purpose |
 |------|---------|
 | `backend/` | Django REST API — models, CQRS commands/selectors, auth |
-| `frontend/` | React + TypeScript UI (Vite, Mantine, TanStack Query) |
+| `frontend/` | React + TypeScript UI (Vite, Mantine, Tailwind, TanStack Query) |
 | `infrastructure/` | AWS CDK stacks and deploy runbook |
 | `docs/` | [`architecture.md`](docs/architecture.md) — design decisions |
 | `.github/workflows/` | CI/CD to AWS on push to `main` |
@@ -45,4 +45,4 @@ Also runs in CI on push/PR to `main` (`.github/workflows/test.yml`).
 
 ## Stack
 
-Django · DRF · PostgreSQL · React · TypeScript · Mantine · TanStack Query · AWS CDK · Elastic Beanstalk · CloudFront
+Django · DRF · PostgreSQL · React · TypeScript · Mantine · Tailwind CSS · TanStack Query · AWS CDK · Elastic Beanstalk · CloudFront

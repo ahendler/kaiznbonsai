@@ -5,6 +5,7 @@ import { notifications } from '@mantine/notifications'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createProduct, updateProduct } from '@/api/inventory'
 import type { Product, ProductCreatePayload } from '@/api/inventory'
+import { getAxiosResponseData, getApiErrorMessage } from '@/api/errors'
 
 interface ProductFormModalProps {
   opened: boolean
@@ -58,18 +59,18 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
       onClose()
       form.reset()
     },
-    onError: (error: any) => {
-      // If we have field-level errors (400 Bad Request from DRF)
-      if (error.response?.data && typeof error.response.data === 'object') {
-        const serverErrors = error.response.data
+    onError: (error) => {
+      const serverErrors = getAxiosResponseData(error)
+      if (serverErrors && typeof serverErrors === 'object' && !Array.isArray(serverErrors)) {
         const formErrors: Record<string, string> = {}
+        const record = serverErrors as Record<string, unknown>
 
-        // Map array of error strings to a single string for Mantine form
-        Object.keys(serverErrors).forEach((key) => {
-          if (Array.isArray(serverErrors[key])) {
-            formErrors[key] = serverErrors[key][0]
-          } else {
-            formErrors[key] = serverErrors[key]
+        Object.keys(record).forEach((key) => {
+          const value = record[key]
+          if (Array.isArray(value)) {
+            formErrors[key] = String(value[0])
+          } else if (typeof value === 'string') {
+            formErrors[key] = value
           }
         })
         form.setErrors(formErrors)
@@ -82,7 +83,7 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
       } else {
         notifications.show({
           title: 'Error',
-          message: error.message || 'An unexpected error occurred.',
+          message: getApiErrorMessage(error),
           color: 'red',
         })
       }

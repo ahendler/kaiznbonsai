@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getAccessToken } from '@/context/AuthContext'
+import { getAccessToken } from '@/api/authToken'
 import { getOrStartRefresh } from '@/api/authRefresh'
 
 const BASE = import.meta.env.VITE_API_URL ?? '' // unset in prod → same-origin /api/v1
