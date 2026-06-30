@@ -13,6 +13,7 @@ import {
 import { useForm } from '@mantine/form'
 import { notifications } from '@mantine/notifications'
 import { authApi } from '@/api/auth'
+import { applyApiFieldErrors, getApiErrorMessage } from '@/api/errors'
 
 interface RegisterFormValues {
   email: string
@@ -45,18 +46,10 @@ export default function RegisterPage() {
       })
       navigate('/login', { replace: true })
     } catch (err: unknown) {
-      // Surface field-level errors from the API response if available.
-      const data = (err as { response?: { data?: Record<string, string[]> } })?.response?.data
-      if (data) {
-        const fieldErrors: Partial<RegisterFormValues> = {}
-        for (const [key, messages] of Object.entries(data)) {
-          fieldErrors[key as keyof RegisterFormValues] = messages[0]
-        }
-        form.setErrors(fieldErrors)
-      } else {
+      if (!applyApiFieldErrors(form, err)) {
         notifications.show({
           title: 'Registration failed',
-          message: 'Something went wrong. Please try again.',
+          message: getApiErrorMessage(err, 'Something went wrong. Please try again.'),
           color: 'red',
         })
       }

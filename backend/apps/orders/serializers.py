@@ -1,9 +1,10 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from apps.inventory.models import Product
 from apps.inventory.serializers import ProductSerializer
+from apps.orders.validators import validate_products_belong_to_user
 
 from .models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem
 
@@ -11,10 +12,10 @@ from .models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem
 def _validate_owned_product_id(value, context):
     request = context.get('request')
     if request and request.user:
-        if not Product.objects.filter(user=request.user, id=value).exists():
-            raise serializers.ValidationError(
-                "Product not found or does not belong to your account."
-            )
+        try:
+            validate_products_belong_to_user(request.user, {value})
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(list(exc.messages)[0]) from exc
     return value
 
 

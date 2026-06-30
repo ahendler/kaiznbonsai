@@ -5,7 +5,7 @@ import { notifications } from '@mantine/notifications'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createProduct, updateProduct } from '@/api/inventory'
 import type { Product, ProductCreatePayload } from '@/api/inventory'
-import { getAxiosResponseData, getApiErrorMessage } from '@/api/errors'
+import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 
 interface ProductFormModalProps {
   opened: boolean
@@ -60,21 +60,9 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
       form.reset()
     },
     onError: (error) => {
-      const serverErrors = getAxiosResponseData(error)
-      if (serverErrors && typeof serverErrors === 'object' && !Array.isArray(serverErrors)) {
-        const formErrors: Record<string, string> = {}
-        const record = serverErrors as Record<string, unknown>
-
-        Object.keys(record).forEach((key) => {
-          const value = record[key]
-          if (Array.isArray(value)) {
-            formErrors[key] = String(value[0])
-          } else if (typeof value === 'string') {
-            formErrors[key] = value
-          }
-        })
+      const formErrors = getFormErrorsFromApi(getAxiosResponseData(error))
+      if (formErrors) {
         form.setErrors(formErrors)
-
         notifications.show({
           title: 'Validation Error',
           message: 'Please check the form for errors.',

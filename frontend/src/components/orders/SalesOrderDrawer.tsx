@@ -3,10 +3,10 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { listProducts } from '../../api/inventory';
-import type { Product } from '../../api/inventory';
-import { useCreateSalesOrder } from '../../api/orders';
-import { getApiErrorMessage } from '../../api/errors';
+import { listProducts } from '@/api/inventory'
+import type { Product } from '@/api/inventory'
+import { useCreateSalesOrder } from '@/api/orders'
+import { applyApiFieldErrors, getApiErrorMessage } from '@/api/errors'
 
 interface Props {
   opened: boolean;
@@ -72,7 +72,9 @@ export function SalesOrderDrawer({ opened, onClose }: Props) {
         onClose();
       },
       onError: (error) => {
-        notifications.show({ title: 'Error', message: "Failed to create order: " + getApiErrorMessage(error), color: 'red' });
+        if (!applyApiFieldErrors(form, error)) {
+          notifications.show({ title: 'Error', message: `Failed to create order: ${getApiErrorMessage(error)}`, color: 'red' })
+        }
       }
     });
   });

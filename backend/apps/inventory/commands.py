@@ -5,6 +5,8 @@ from django.db import transaction
 
 from apps.inventory.models import MovementReason, Stock, StockMovement
 
+STOCK_BATCH_NOT_FOUND = 'Stock batch not found.'
+
 
 @transaction.atomic
 def record_movement(
@@ -18,7 +20,7 @@ def record_movement(
 ) -> StockMovement:
     """Append a movement row and update stock_batch.current_quantity atomically."""
     if stock_batch.user_id != user.id:
-        raise ValidationError("Stock batch does not belong to this user.")
+        raise ValidationError(STOCK_BATCH_NOT_FOUND)
 
     movement = StockMovement.objects.create(
         user=user,
