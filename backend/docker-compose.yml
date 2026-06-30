@@ -1,4 +1,4 @@
-version: '3.8'
+# EB production compose. __BACKEND_IMAGE__ is substituted by deploy-backend.yml at deploy time.
 
 services:
   db:
@@ -21,7 +21,7 @@ services:
     restart: always
     command: sh -c "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 10 --worker-class gthread"
     ports:
-      - "80:8000"  # Expose gunicorn to port 80 for Elastic Beanstalk reverse proxy
+      - "80:8000"
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_USER=${POSTGRES_USER}
