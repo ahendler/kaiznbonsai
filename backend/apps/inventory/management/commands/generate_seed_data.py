@@ -50,8 +50,8 @@ class Command(BaseCommand):
         p_coff = Product.objects.create(user=user, name="Espresso Beans", sku="COFF-01", unit_of_measure="KG", description="Dark roast")
         p_oat = Product.objects.create(user=user, name="Oat Milk", sku="OAT-01", unit_of_measure="L", description="Barista grade")
         p_mat = Product.objects.create(user=user, name="Matcha", sku="MAT-01", unit_of_measure="KG", description="Powder")
-        p_kmb = Product.objects.create(user=user, name="Kombucha", sku="KMB-01", unit_of_measure="EA", description="Ginger flavor")
-        p_bag = Product.objects.create(user=user, name="Filter Bags", sku="BAG-01", unit_of_measure="EA", description="Size 4")
+        p_kmb = Product.objects.create(user=user, name="Kombucha", sku="KMB-01", unit_of_measure="UNIT", description="Ginger flavor")
+        p_bag = Product.objects.create(user=user, name="Filter Bags", sku="BAG-01", unit_of_measure="UNIT", description="Size 4")
 
         self.stdout.write("Created Products")
 
@@ -164,3 +164,9 @@ class Command(BaseCommand):
         # Leave SO6 in DRAFT state
 
         self.stdout.write("Processed Sales Orders")
+
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS("Demo account credentials:"))
+        self.stdout.write(f"  Email:    {email}")
+        self.stdout.write("  Password: Password123!")
+        self.stdout.write("")

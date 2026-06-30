@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
-from .models import PurchaseOrder, SalesOrder
+from .models import PurchaseOrder, SalesOrder, OrderStatus
 from .serializers import PurchaseOrderSerializer, SalesOrderSerializer
 from .commands import (
     create_purchase_order, confirm_purchase_order, cancel_purchase_order,
@@ -50,6 +50,15 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             raise ValidationError(list(e.messages))
         return Response(self.get_serializer(order).data)
 
+    def destroy(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status == OrderStatus.CONFIRMED:
+            return Response(
+                {"detail": "Cannot delete a confirmed purchase order. Cancel it first."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 class SalesOrderViewSet(viewsets.ModelViewSet):
     serializer_class = SalesOrderSerializer
     permission_classes = [IsAuthenticated]
@@ -87,3 +96,12 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
         except DjangoValidationError as e:
             raise ValidationError(list(e.messages))
         return Response(self.get_serializer(order).data)
+
+    def destroy(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status == OrderStatus.CONFIRMED:
+            return Response(
+                {"detail": "Cannot delete a confirmed sales order. Cancel it first."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)

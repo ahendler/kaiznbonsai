@@ -1,9 +1,11 @@
 import pytest
 from decimal import Decimal
 from django.core.exceptions import ValidationError
+from django.db.models import Sum
 from apps.accounts.models import User
-from apps.inventory.models import Product, Stock
+from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder, SalesOrderItem
+from apps.inventory.commands import record_movement
 from apps.orders.commands import (
     create_purchase_order,
     confirm_purchase_order,
@@ -25,6 +27,24 @@ def product(user):
         sku="MATCHA-1",
         unit_of_measure="UNIT"
     )
+
+
+def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('5.00')):
+    stock = Stock.objects.create(
+        user=user,
+        product=product,
+        initial_quantity=Decimal(str(quantity)),
+        current_quantity=Decimal('0'),
+        unit_cost=unit_cost,
+    )
+    record_movement(
+        user=user,
+        stock_batch=stock,
+        delta=Decimal(str(quantity)),
+        reason=MovementReason.RECEIPT,
+    )
+    stock.refresh_from_db()
+    return stock
 
 @pytest.mark.django_db
 class TestPurchaseOrders:
@@ -50,6 +70,7 @@ class TestPurchaseOrders:
         assert stock.current_quantity == Decimal('100.000')
         assert stock.unit_cost == Decimal('10.50')
         assert stock.lot_code == 'LOT1'
+        assert stock.movements.filter(reason=MovementReason.RECEIPT).count() == 1
 
     def test_cancel_confirmed_purchase_order(self, user, product):
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
@@ -66,63 +87,184 @@ class TestPurchaseOrders:
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
         po = create_purchase_order(user, items_data)
         confirm_purchase_order(po)
-        
-        # Simulate consumption
-        stock = Stock.objects.first()
-        stock.current_quantity -= Decimal('10')
-        stock.save()
-        
-        with pytest.raises(ValidationError, match="consumed or sold"):
+
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+
+        with pytest.raises(ValidationError, match="used in a sale"):
             cancel_purchase_order(po)
+
+    def test_cannot_cancel_purchase_order_after_sale_and_cancel(self, user, product):
+        items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
+        po = create_purchase_order(user, items_data)
+        confirm_purchase_order(po)
+        stock = Stock.objects.get(purchase_order_item__order=po)
+
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+        cancel_sales_order(so)
+
+        stock.refresh_from_db()
+        assert stock.current_quantity == stock.initial_quantity
+
+        with pytest.raises(ValidationError, match="used in a sale"):
+            cancel_purchase_order(po)
+
+        po.refresh_from_db()
+        assert po.status == OrderStatus.CONFIRMED
+        assert Stock.objects.filter(id=stock.id).exists()
 
 @pytest.mark.django_db
 class TestSalesOrders:
-    def test_fifo_stock_deduction(self, user, product):
-        # Create two stock batches: older and newer
-        Stock.objects.create(user=user, product=product, initial_quantity=10, current_quantity=10, unit_cost=5.00)
-        Stock.objects.create(user=user, product=product, initial_quantity=20, current_quantity=20, unit_cost=6.00)
-        
+    def test_single_batch_sale_creates_sale_movement(self, user, product):
+        stock = make_stock_with_receipt(user, product, 20)
         items_data = [{'product_id': product.id, 'quantity': 15, 'unit_price': 15.00}]
         so = create_sales_order(user, items_data)
-        
+        item = so.items.get()
+
         confirm_sales_order(so)
-        
-        # FIFO check
+
+        stock.refresh_from_db()
+        assert stock.current_quantity == Decimal('5.000')
+
+        sale = stock.movements.get(reason=MovementReason.SALE)
+        assert sale.delta == Decimal('-15.000')
+        assert sale.sales_order_item_id == item.id
+
+        total_delta = stock.movements.aggregate(total=Sum('delta'))['total']
+        assert total_delta == stock.current_quantity
+
+    def test_fifo_stock_deduction(self, user, product):
+        make_stock_with_receipt(user, product, 10, unit_cost=Decimal('5.00'))
+        make_stock_with_receipt(user, product, 20, unit_cost=Decimal('6.00'))
+
+        items_data = [{'product_id': product.id, 'quantity': 15, 'unit_price': 15.00}]
+        so = create_sales_order(user, items_data)
+        item = so.items.get()
+
+        confirm_sales_order(so)
+
         stocks = Stock.objects.order_by('created_at')
-        assert stocks[0].current_quantity == Decimal('0.000')   # First batch fully consumed
-        assert stocks[1].current_quantity == Decimal('15.000')  # Second batch partially consumed
+        assert stocks[0].current_quantity == Decimal('0.000')
+        assert stocks[1].current_quantity == Decimal('15.000')
+
+        sale_movements = StockMovement.objects.filter(
+            reason=MovementReason.SALE,
+            sales_order_item=item,
+        ).order_by('created_at')
+        assert sale_movements.count() == 2
+        assert sale_movements[0].delta == Decimal('-10.000')
+        assert sale_movements[1].delta == Decimal('-5.000')
+        assert sum(m.delta for m in sale_movements) == Decimal('-15.000')
+
+        for stock in stocks:
+            total_delta = stock.movements.aggregate(total=Sum('delta'))['total']
+            assert total_delta == stock.current_quantity
 
     def test_insufficient_stock(self, user, product):
-        Stock.objects.create(user=user, product=product, initial_quantity=10, current_quantity=10, unit_cost=5.00)
-        
+        make_stock_with_receipt(user, product, 10)
+
         items_data = [{'product_id': product.id, 'quantity': 15, 'unit_price': 15.00}]
         so = create_sales_order(user, items_data)
-        
+
         with pytest.raises(ValidationError, match="Insufficient stock"):
             confirm_sales_order(so)
-            
-        # Verify transaction rolled back, stock untouched
+
         stock = Stock.objects.first()
         assert stock.current_quantity == Decimal('10.000')
+        assert StockMovement.objects.filter(reason=MovementReason.SALE).count() == 0
 
     def test_cancel_sales_order_refunds_stock(self, user, product):
-        Stock.objects.create(user=user, product=product, initial_quantity=20, current_quantity=20, unit_cost=5.00)
+        stock = make_stock_with_receipt(user, product, 20)
         items_data = [{'product_id': product.id, 'quantity': 15, 'unit_price': 15.00}]
         so = create_sales_order(user, items_data)
         confirm_sales_order(so)
-        
-        stock = Stock.objects.first()
+
+        stock.refresh_from_db()
         assert stock.current_quantity == Decimal('5.000')
-        
-        # Cancel
+
         cancel_sales_order(so)
         so.refresh_from_db()
         assert so.status == OrderStatus.CANCELLED
-        
+
         stock.refresh_from_db()
-        # Refund adds back the 15 to current_quantity, AND bumps initial_quantity so it's not locked.
         assert stock.current_quantity == Decimal('20.000')
-        assert stock.initial_quantity == Decimal('35.000')
+        assert stock.initial_quantity == Decimal('20.000')
+
+        return_movement = stock.movements.get(reason=MovementReason.RETURN)
+        assert return_movement.delta == Decimal('15.000')
+        total_delta = stock.movements.aggregate(total=Sum('delta'))['total']
+        assert total_delta == stock.current_quantity
+
+    def test_multi_batch_fifo_sale_then_cancel_restores_batches(self, user, product):
+        batch_a = make_stock_with_receipt(user, product, 10, unit_cost=Decimal('5.00'))
+        batch_b = make_stock_with_receipt(user, product, 20, unit_cost=Decimal('6.00'))
+
+        items_data = [{'product_id': product.id, 'quantity': 15, 'unit_price': 15.00}]
+        so = create_sales_order(user, items_data)
+        confirm_sales_order(so)
+
+        batch_a.refresh_from_db()
+        batch_b.refresh_from_db()
+        assert batch_a.current_quantity == Decimal('0.000')
+        assert batch_b.current_quantity == Decimal('15.000')
+
+        cancel_sales_order(so)
+
+        batch_a.refresh_from_db()
+        batch_b.refresh_from_db()
+        assert batch_a.current_quantity == Decimal('10.000')
+        assert batch_b.current_quantity == Decimal('20.000')
+
+        sale_movements = StockMovement.objects.filter(
+            sales_order_item__order=so,
+            reason=MovementReason.SALE,
+        )
+        return_movements = StockMovement.objects.filter(
+            sales_order_item__order=so,
+            reason=MovementReason.RETURN,
+        )
+        assert sale_movements.count() == 2
+        assert return_movements.count() == 2
+
+        for sale in sale_movements:
+            matching_return = return_movements.get(
+                stock_batch_id=sale.stock_batch_id,
+                sales_order_item_id=sale.sales_order_item_id,
+            )
+            assert matching_return.delta == -sale.delta
+
+    def test_cancel_draft_order_creates_no_movements(self, user, product):
+        make_stock_with_receipt(user, product, 10)
+        items_data = [{'product_id': product.id, 'quantity': 5, 'unit_price': 15.00}]
+        so = create_sales_order(user, items_data)
+
+        cancel_sales_order(so)
+
+        so.refresh_from_db()
+        assert so.status == OrderStatus.CANCELLED
+        assert StockMovement.objects.filter(reason=MovementReason.RETURN).count() == 0
+        assert StockMovement.objects.filter(reason=MovementReason.SALE).count() == 0
+
+    def test_cancel_confirmed_without_sale_movements_raises(self, user, product):
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 15.00}],
+        )
+        so.status = OrderStatus.CONFIRMED
+        so.save(update_fields=['status', 'updated_at'])
+
+        with pytest.raises(ValidationError, match="no stock movements"):
+            cancel_sales_order(so)
+
+        so.refresh_from_db()
+        assert so.status == OrderStatus.CONFIRMED
 
     def test_cannot_create_sales_order_with_another_users_product(self, user, product):
         other_user = User.objects.create_user(
@@ -141,13 +283,7 @@ class TestSalesOrders:
         victim_product = Product.objects.create(
             user=user, name="Victim Tea", sku="VIC-1", unit_of_measure="UNIT"
         )
-        victim_stock = Stock.objects.create(
-            user=user,
-            product=victim_product,
-            initial_quantity=100,
-            current_quantity=100,
-            unit_cost=5.00,
-        )
+        victim_stock = make_stock_with_receipt(user, victim_product, 100, unit_cost=Decimal('5.00'))
 
         so = SalesOrder.objects.create(user=attacker, status=OrderStatus.DRAFT)
         SalesOrderItem.objects.create(
