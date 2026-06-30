@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
     paths:
       - "backend/**"
       - "infrastructure/infrastructure/backend_stack.py"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:

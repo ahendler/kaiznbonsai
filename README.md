@@ -1,56 +1,48 @@
 # KaiznBonsai
 
-KaiznBonsai is an inventory management web application tailored for Food & Beverage CPG (Consumer Packaged Goods) brands.
+Inventory management for Food & Beverage CPG brands — products, stock batches, purchase/sales orders, and financial reporting.
 
-Deployed at Cloudfront URL: https://d1zfq2u3duxnio.cloudfront.net
+## Live
 
-## Repository Structure
+**https://d1zfq2u3duxnio.cloudfront.net**
 
-- `backend/`: Django REST Framework API, containing the data models and CQRS business logic.
-- `frontend/`: React + TypeScript user interface built with Vite.
-- `infrastructure/`: AWS CDK code for defining the cloud deployment architecture.
-- `docs/`: Technical planning, architecture documentation, and challenge details.
-- `.github/workflows/`: CI/CD pipelines for automated build and deployment.
+API docs (Swagger): https://d1zfq2u3duxnio.cloudfront.net/api/docs/
 
-## Architecture Notes
+## Quick start
 
-This implementation fulfills (part of) the challenge requirements while incorporating specific design decisions:
+```bash
+cp .env.example .env          # set SECRET_KEY
+docker compose up --build
+```
 
-- **CQRS Lite:** The backend order management module separates read models (selectors) from write operations (commands). This encapsulates business logic away from HTTP views and simplifies unit testing.
-- **Data Isolation:** All database queries are scoped to the authenticated user's account using viewset querysets, DRF permissions, and ownership validation in serializers and commands, ensuring tenant data separation.
-- **Infrastructure:** AWS CDK is utilized to define and deploy the cloud infrastructure.
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:8000 |
 
-## API Overview
+## Tests
 
-- `POST /api/v1/auth/register/`, `POST /api/v1/auth/login/`, `POST /api/v1/auth/logout/`
-- `GET /api/v1/auth/me/`
-- `GET|POST|PATCH|DELETE /api/v1/inventory/products/`
-- `GET|POST|PATCH|DELETE /api/v1/inventory/stocks/`
-- `GET /api/v1/inventory/financials/`
-- `GET /api/v1/inventory/financials/products/`
-- `GET|POST|PATCH|DELETE /api/v1/orders/purchase-orders/`
-- `POST /api/v1/orders/purchase-orders/{id}/confirm/`
-- `POST /api/v1/orders/purchase-orders/{id}/cancel/`
-- `GET|POST|PATCH|DELETE /api/v1/orders/sales-orders/`
-- `POST /api/v1/orders/sales-orders/{id}/confirm/`
-- `POST /api/v1/orders/sales-orders/{id}/cancel/`
+```bash
+docker compose exec backend pytest
+```
 
-## Local Development
+Also runs in CI on push/PR to `main` (`.github/workflows/test.yml`).
 
-1. Ensure Docker and `docker-compose` are installed.
-2. Run `docker-compose up --build` in the root directory.
-3. Access the frontend at `http://localhost:3000` and the backend at `http://localhost:8000`.
+## Repository
 
-## Environment Variables
+| Path | Purpose |
+|------|---------|
+| `backend/` | Django REST API — models, CQRS commands/selectors, auth |
+| `frontend/` | React + TypeScript UI (Vite, Mantine, TanStack Query) |
+| `infrastructure/` | AWS CDK stacks and deploy runbook |
+| `docs/` | [`architecture.md`](docs/architecture.md) — design decisions |
+| `.github/workflows/` | CI/CD to AWS on push to `main` |
 
-- `SECRET_KEY`
-- `DEBUG`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- `CORS_ALLOWED_ORIGINS`
-- `VITE_API_URL`
+## Read more
 
-_Refer to the `docs/` folder for detailed technical plans, API documentation, and architecture diagrams._
+- [`docs/architecture.md`](docs/architecture.md) — CQRS, data isolation, API docs, AWS summary
+- [`infrastructure/README.md`](infrastructure/README.md) — CDK topology, `.env` config, CI/CD flow
+
+## Stack
+
+Django · DRF · PostgreSQL · React · TypeScript · Mantine · TanStack Query · AWS CDK · Elastic Beanstalk · CloudFront

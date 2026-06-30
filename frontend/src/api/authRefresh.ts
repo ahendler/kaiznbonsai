@@ -4,7 +4,7 @@ import type { User } from '@/types/auth'
 
 export const REFRESH_TOKEN_KEY = 'kb_refresh_token'
 
-const BASE = import.meta.env.VITE_API_URL ?? ''
+const BASE = import.meta.env.VITE_API_URL ?? '' // unset in prod → same-origin /api/v1
 
 // Module-level singleton — ensures only one refresh call is in flight at a time
 // regardless of how many concurrent 401s arrive.
@@ -16,10 +16,9 @@ let _refreshPromise: Promise<string> | null = null
  * Phase 1: POST /auth/token/refresh/ with no body — the backend reads the
  *          httpOnly refresh cookie. This is the primary path.
  *
- * Phase 2: If Phase 1 fails (cookie absent — Safari ITP, Brave Shields, or a
- *          proxy stripping Set-Cookie headers), fall back to the token stored
- *          in sessionStorage and send it in the request body. The backend
- *          accepts either source.
+ * Phase 2: If Phase 1 fails (cookie blocked by browser privacy settings),
+ *          fall back to the token stored in sessionStorage and send it in
+ *          the request body. The backend accepts either source.
  */
 export function getOrStartRefresh(): Promise<string> {
   if (!_refreshPromise) {

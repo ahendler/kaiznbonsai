@@ -13,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // In dev, forward /api requests to the Django container so there
-      // are no CORS issues. In production, VITE_API_URL is set instead.
+      // In dev, forward /api requests to the Django container (CORS-free).
+      // In production, /api/* routes to EB via CloudFront path routing.
       '/api': {
         target: 'http://backend:8000',
         changeOrigin: true,

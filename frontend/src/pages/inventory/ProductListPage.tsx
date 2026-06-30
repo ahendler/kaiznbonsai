@@ -317,7 +317,7 @@ export default function ProductListPage() {
             <TruncatedTextWithTooltip text={productToDelete?.name || ''} fw={600} />
           </div>
           <Text size="sm" c="dimmed">
-            This action cannot be undone (for now).
+            This action cannot be undone.
           </Text>
           {parseFloat(productToDelete?.total_stock || '0') > 0 && (
             <Text size="sm" c="red" mt="sm">

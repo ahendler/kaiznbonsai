@@ -52,9 +52,9 @@ class LoginView(TokenObtainPairView):
 class RefreshView(TokenRefreshView):
     """Reads the refresh token from the httpOnly cookie.
 
-    Falls back to the request body to support environments where cross-domain
-    cookies are blocked (Safari ITP, privacy-hardened browsers). In that case
-    the frontend is responsible for storing and sending the token securely.
+    Falls back to the request body when the cookie is unavailable (e.g. Safari
+    ITP or privacy-hardened browsers). The frontend keeps a sessionStorage
+    copy for that fallback path.
     """
     permission_classes = (AllowAny,)
 

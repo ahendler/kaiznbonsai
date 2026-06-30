@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-import os
-
 import aws_cdk as cdk
 
-from infrastructure.frontend_stack import FrontendStack
 from infrastructure.backend_stack import BackendStack
+from infrastructure.frontend_stack import FrontendStack
 
 app = cdk.App()
 
-FrontendStack(app, "KaiznBonsaiFrontendStack")
-BackendStack(app, "KaiznBonsaiBackendStack")
+# BackendStack must be instantiated first — it exposes eb_endpoint_url,
+# which FrontendStack uses to add /api/* and /admin/* routing behaviors.
+backend = BackendStack(app, "KaiznBonsaiBackendStack")
+FrontendStack(app, "KaiznBonsaiFrontendStack", eb_endpoint_url=backend.eb_endpoint_url)
 
 app.synth()

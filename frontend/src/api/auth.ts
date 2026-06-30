@@ -18,18 +18,9 @@ export const authApi = {
     api.post('/auth/register/', payload).then((r) => r.data),
 
   login: (payload: LoginPayload) =>
-    api.post<AuthTokens>('/auth/login/', payload).then((r) => {
-      // Keep the sessionStorage fallback copy in sync with the refresh
-      // token the backend bakes into the httpOnly cookie on login.
-      if (r.data.refresh) {
-        sessionStorage.setItem(REFRESH_TOKEN_KEY, r.data.refresh as string)
-      }
-      return r.data
-    }),
+    api.post<AuthTokens>('/auth/login/', payload).then((r) => r.data),
 
   logout: () => {
-    // Clear the fallback copy before the server-side blacklist so a failed
-    // network request cannot leave a dangling token in sessionStorage.
     sessionStorage.removeItem(REFRESH_TOKEN_KEY)
     return api.post('/auth/logout/')
   },

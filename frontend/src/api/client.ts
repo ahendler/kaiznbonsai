@@ -2,7 +2,7 @@ import axios from 'axios'
 import { getAccessToken } from '@/context/AuthContext'
 import { getOrStartRefresh } from '@/api/authRefresh'
 
-const BASE = import.meta.env.VITE_API_URL ?? ''
+const BASE = import.meta.env.VITE_API_URL ?? '' // unset in prod → same-origin /api/v1
 
 const api = axios.create({
   baseURL: `${BASE}/api/v1`,
