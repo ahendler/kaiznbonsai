@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from apps.accounts.models import User
 from apps.inventory.models import Product, Stock
-from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder
+from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder, SalesOrderItem
 from apps.orders.commands import (
     create_purchase_order,
     confirm_purchase_order,
@@ -123,3 +123,39 @@ class TestSalesOrders:
         # Refund adds back the 15 to current_quantity, AND bumps initial_quantity so it's not locked.
         assert stock.current_quantity == Decimal('20.000')
         assert stock.initial_quantity == Decimal('35.000')
+
+    def test_cannot_create_sales_order_with_another_users_product(self, user, product):
+        other_user = User.objects.create_user(
+            username="other@example.com", email="other@example.com", password="password"
+        )
+        items_data = [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}]
+
+        with pytest.raises(ValidationError, match="do not belong"):
+            create_sales_order(other_user, items_data)
+
+    def test_cannot_drain_another_users_stock_on_confirm(self, user, product):
+        """Even if line items were inserted directly, confirm only deducts the order owner's stock."""
+        attacker = User.objects.create_user(
+            username="attacker@example.com", email="attacker@example.com", password="password"
+        )
+        victim_product = Product.objects.create(
+            user=user, name="Victim Tea", sku="VIC-1", unit_of_measure="UNIT"
+        )
+        victim_stock = Stock.objects.create(
+            user=user,
+            product=victim_product,
+            initial_quantity=100,
+            current_quantity=100,
+            unit_cost=5.00,
+        )
+
+        so = SalesOrder.objects.create(user=attacker, status=OrderStatus.DRAFT)
+        SalesOrderItem.objects.create(
+            order=so, product=victim_product, quantity=50, unit_price=20.00
+        )
+
+        with pytest.raises(ValidationError, match="Insufficient stock"):
+            confirm_sales_order(so)
+
+        victim_stock.refresh_from_db()
+        assert victim_stock.current_quantity == Decimal('100.000')

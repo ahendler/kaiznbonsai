@@ -2,7 +2,17 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, OrderStatus
-from apps.inventory.models import Stock
+from apps.inventory.models import Product, Stock
+
+
+def _validate_products_belong_to_user(user, items_data: list) -> None:
+    """Ensure every product_id in the order belongs to the requesting user."""
+    product_ids = {item['product_id'] for item in items_data}
+    owned_ids = set(
+        Product.objects.filter(user=user, id__in=product_ids).values_list('id', flat=True)
+    )
+    if owned_ids != product_ids:
+        raise ValidationError("One or more products do not belong to your account.")
 
 @transaction.atomic
 def create_purchase_order(user, items_data: list, title: str = None, order_date=None) -> PurchaseOrder:
@@ -12,6 +22,8 @@ def create_purchase_order(user, items_data: list, title: str = None, order_date=
     """
     if not items_data:
         raise ValidationError("A purchase order must have at least one item.")
+
+    _validate_products_belong_to_user(user, items_data)
 
     order = PurchaseOrder.objects.create(
         user=user,
@@ -90,6 +102,8 @@ def create_sales_order(user, items_data: list, title: str = None, order_date=Non
     if not items_data:
         raise ValidationError("A sales order must have at least one item.")
 
+    _validate_products_belong_to_user(user, items_data)
+
     order = SalesOrder.objects.create(
         user=user,
         title=title,
@@ -121,6 +135,7 @@ def confirm_sales_order(order: SalesOrder) -> SalesOrder:
         
         # Lock the stock rows to prevent race conditions during FIFO allocation
         available_batches = list(Stock.objects.filter(
+            user=order.user,
             product=item.product,
             current_quantity__gt=0
         ).order_by('created_at').select_for_update())

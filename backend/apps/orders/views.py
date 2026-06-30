@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
@@ -13,6 +14,7 @@ from .commands import (
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseOrderSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return PurchaseOrder.objects.filter(user=self.request.user).prefetch_related('items__product')
@@ -50,6 +52,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
 class SalesOrderViewSet(viewsets.ModelViewSet):
     serializer_class = SalesOrderSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return SalesOrder.objects.filter(user=self.request.user).prefetch_related('items__product')

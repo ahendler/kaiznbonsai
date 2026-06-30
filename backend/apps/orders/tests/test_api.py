@@ -86,3 +86,50 @@ class TestSalesOrderAPI:
         response = authenticated_client.post(url)
         assert response.status_code == 400
         assert "Insufficient stock" in response.data[0]
+
+    def test_cannot_create_sales_order_with_another_users_product(self, api_client):
+        owner = User.objects.create_user(
+            username="owner@example.com", email="owner@example.com", password="password"
+        )
+        attacker = User.objects.create_user(
+            username="attacker@example.com", email="attacker@example.com", password="password"
+        )
+        product = Product.objects.create(
+            user=owner, name="Owner Product", sku="OWN-1", unit_of_measure="UNIT"
+        )
+        api_client.force_authenticate(user=attacker)
+
+        url = '/api/v1/orders/sales-orders/'
+        data = {
+            'items_data': [
+                {'product_id': product.id, 'quantity': 10, 'unit_price': 20.00}
+            ]
+        }
+        response = api_client.post(url, data, format='json')
+        assert response.status_code == 400
+        assert SalesOrder.objects.count() == 0
+
+    def test_confirm_sales_order_cannot_drain_another_users_stock(self, api_client):
+        owner = User.objects.create_user(
+            username="owner2@example.com", email="owner2@example.com", password="password"
+        )
+        attacker = User.objects.create_user(
+            username="attacker2@example.com", email="attacker2@example.com", password="password"
+        )
+        product = Product.objects.create(
+            user=owner, name="Protected Stock", sku="PRT-1", unit_of_measure="UNIT"
+        )
+        stock = Stock.objects.create(
+            user=owner, product=product, initial_quantity=100, current_quantity=100, unit_cost=10.00
+        )
+
+        so = SalesOrder.objects.create(user=attacker, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=50, unit_price=20.00)
+        api_client.force_authenticate(user=attacker)
+
+        url = f'/api/v1/orders/sales-orders/{so.id}/confirm/'
+        response = api_client.post(url)
+        assert response.status_code == 400
+
+        stock.refresh_from_db()
+        assert stock.current_quantity == 100
