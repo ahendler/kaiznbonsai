@@ -56,15 +56,21 @@ class FrontendStack(Stack):
             },
             default_root_object="index.html",
             # SPA support: serve index.html for unknown paths so React Router
-            # handles client-side navigation. Must not apply to /api/* paths —
+            # handles client-side navigation. S3 + OAC returns 403 for
+            # missing keys, so both must be remapped. Must not apply to /api/* —
             # CloudFront evaluates the most-specific behavior first, so the EB
             # behaviors above take precedence over this fallback.
             error_responses=[
                 cloudfront.ErrorResponse(
+                    http_status=403,
+                    response_page_path="/index.html",
+                    response_http_status=200,
+                ),
+                cloudfront.ErrorResponse(
                     http_status=404,
                     response_page_path="/index.html",
                     response_http_status=200,
-                )
+                ),
             ],
         )
 
