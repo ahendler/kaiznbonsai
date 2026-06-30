@@ -1,35 +1,43 @@
 from decimal import Decimal
+
 from django.db.models import Sum, F, DecimalField, OuterRef, Subquery, Value, Case, When
 from django.db.models.functions import Coalesce
-from apps.orders.models import SalesOrderItem, OrderStatus
-from apps.inventory.models import Stock, Product
+
+from apps.inventory.models import MovementReason, Product, Stock, StockMovement
+from apps.orders.models import OrderStatus, SalesOrderItem
+
 
 def get_overall_financials(user) -> dict:
     revenue_agg = SalesOrderItem.objects.filter(
-        order__user=user, 
-        order__status=OrderStatus.CONFIRMED
+        order__user=user,
+        order__status=OrderStatus.CONFIRMED,
     ).aggregate(
         total_revenue=Coalesce(
             Sum(F('quantity') * F('unit_price'), output_field=DecimalField()),
-            Value(Decimal('0.00'), output_field=DecimalField())
+            Value(Decimal('0.00'), output_field=DecimalField()),
         )
     )
     total_revenue = revenue_agg['total_revenue']
 
-    cogs_agg = Stock.objects.filter(
-        product__user=user
+    cogs_agg = StockMovement.objects.filter(
+        user=user,
+        reason=MovementReason.SALE,
+        sales_order_item__order__status=OrderStatus.CONFIRMED,
     ).aggregate(
         total_cogs=Coalesce(
-            Sum((F('initial_quantity') - F('current_quantity')) * F('unit_cost'), output_field=DecimalField()),
-            Value(Decimal('0.00'), output_field=DecimalField())
-        ),
-        inventory_value=Coalesce(
-            Sum(F('current_quantity') * F('unit_cost'), output_field=DecimalField()),
-            Value(Decimal('0.00'), output_field=DecimalField())
+            Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField()),
+            Value(Decimal('0.00'), output_field=DecimalField()),
         )
     )
     total_cogs = cogs_agg['total_cogs']
-    inventory_value = cogs_agg['inventory_value']
+
+    inventory_agg = Stock.objects.filter(product__user=user).aggregate(
+        inventory_value=Coalesce(
+            Sum(F('current_quantity') * F('unit_cost'), output_field=DecimalField()),
+            Value(Decimal('0.00'), output_field=DecimalField()),
+        )
+    )
+    inventory_value = inventory_agg['inventory_value']
 
     gross_profit = total_revenue - total_cogs
     margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else Decimal('0.00')
@@ -39,21 +47,25 @@ def get_overall_financials(user) -> dict:
         "cogs": round(total_cogs, 2),
         "gross_profit": round(gross_profit, 2),
         "margin": round(margin, 2),
-        "inventory_value": round(inventory_value, 2)
+        "inventory_value": round(inventory_value, 2),
     }
+
 
 def get_products_with_financials(user):
     revenue_sq = SalesOrderItem.objects.filter(
         product=OuterRef('pk'),
-        order__status=OrderStatus.CONFIRMED
+        order__status=OrderStatus.CONFIRMED,
     ).values('product').annotate(
         total=Sum(F('quantity') * F('unit_price'), output_field=DecimalField())
     ).values('total')
 
-    cogs_sq = Stock.objects.filter(
-        product=OuterRef('pk')
-    ).values('product').annotate(
-        total=Sum((F('initial_quantity') - F('current_quantity')) * F('unit_cost'), output_field=DecimalField())
+    cogs_sq = StockMovement.objects.filter(
+        stock_batch__product=OuterRef('pk'),
+        user=user,
+        reason=MovementReason.SALE,
+        sales_order_item__order__status=OrderStatus.CONFIRMED,
+    ).values('stock_batch__product').annotate(
+        total=Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField())
     ).values('total')
 
     products = Product.objects.filter(user=user).annotate(
@@ -65,7 +77,7 @@ def get_products_with_financials(user):
         margin=Case(
             When(revenue__gt=0, then=(F('profit') / F('revenue')) * 100.0),
             default=Value(Decimal('0.00')),
-            output_field=DecimalField(max_digits=12, decimal_places=2)
+            output_field=DecimalField(max_digits=12, decimal_places=2),
         )
     )
 
