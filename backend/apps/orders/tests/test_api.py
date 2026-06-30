@@ -1,7 +1,9 @@
 import pytest
+from decimal import Decimal
 from rest_framework.test import APIClient
 from apps.accounts.models import User
-from apps.inventory.models import Product, Stock
+from apps.inventory.commands import record_movement
+from apps.inventory.models import MovementReason, Product, Stock
 from apps.orders.models import PurchaseOrder, SalesOrder, OrderStatus
 
 @pytest.fixture
@@ -25,6 +27,24 @@ def product(user):
         sku="MATCHA-1",
         unit_of_measure="UNIT"
     )
+
+
+def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('10.00')):
+    stock = Stock.objects.create(
+        user=user,
+        product=product,
+        initial_quantity=Decimal(str(quantity)),
+        current_quantity=Decimal('0'),
+        unit_cost=unit_cost,
+    )
+    record_movement(
+        user=user,
+        stock_batch=stock,
+        delta=Decimal(str(quantity)),
+        reason=MovementReason.RECEIPT,
+    )
+    stock.refresh_from_db()
+    return stock
 
 @pytest.mark.django_db
 class TestPurchaseOrderAPI:
@@ -50,6 +70,23 @@ class TestPurchaseOrderAPI:
         assert response.status_code == 200
         assert response.data['status'] == OrderStatus.CONFIRMED
         assert Stock.objects.count() == 1
+
+    def test_delete_draft_purchase_order_returns_204(self, authenticated_client, product, user):
+        po = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        po.items.create(product=product, quantity=100, unit_cost=10.50, lot_code='LOT1')
+
+        response = authenticated_client.delete(f'/api/v1/orders/purchase-orders/{po.id}/')
+        assert response.status_code == 204
+        assert not PurchaseOrder.objects.filter(id=po.id).exists()
+
+    def test_delete_confirmed_purchase_order_returns_409(self, authenticated_client, product, user):
+        po = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        po.items.create(product=product, quantity=100, unit_cost=10.50, lot_code='LOT1')
+        authenticated_client.post(f'/api/v1/orders/purchase-orders/{po.id}/confirm/')
+
+        response = authenticated_client.delete(f'/api/v1/orders/purchase-orders/{po.id}/')
+        assert response.status_code == 409
+        assert PurchaseOrder.objects.filter(id=po.id).exists()
 
 @pytest.mark.django_db
 class TestSalesOrderAPI:
@@ -133,3 +170,32 @@ class TestSalesOrderAPI:
 
         stock.refresh_from_db()
         assert stock.current_quantity == 100
+
+    def test_delete_draft_sales_order_returns_204(self, authenticated_client, user, product):
+        so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=50, unit_price=20.00)
+
+        response = authenticated_client.delete(f'/api/v1/orders/sales-orders/{so.id}/')
+        assert response.status_code == 204
+        assert not SalesOrder.objects.filter(id=so.id).exists()
+
+    def test_delete_confirmed_sales_order_returns_409(self, authenticated_client, user, product):
+        make_stock_with_receipt(user, product, 100)
+        so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=50, unit_price=20.00)
+        authenticated_client.post(f'/api/v1/orders/sales-orders/{so.id}/confirm/')
+
+        response = authenticated_client.delete(f'/api/v1/orders/sales-orders/{so.id}/')
+        assert response.status_code == 409
+        assert SalesOrder.objects.filter(id=so.id).exists()
+
+    def test_delete_cancelled_sales_order_returns_204(self, authenticated_client, user, product):
+        make_stock_with_receipt(user, product, 100)
+        so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        so.items.create(product=product, quantity=50, unit_price=20.00)
+        authenticated_client.post(f'/api/v1/orders/sales-orders/{so.id}/confirm/')
+        authenticated_client.post(f'/api/v1/orders/sales-orders/{so.id}/cancel/')
+
+        response = authenticated_client.delete(f'/api/v1/orders/sales-orders/{so.id}/')
+        assert response.status_code == 204
+        assert not SalesOrder.objects.filter(id=so.id).exists()

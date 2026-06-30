@@ -87,14 +87,38 @@ class TestPurchaseOrders:
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
         po = create_purchase_order(user, items_data)
         confirm_purchase_order(po)
-        
-        # Simulate consumption
-        stock = Stock.objects.first()
-        stock.current_quantity -= Decimal('10')
-        stock.save()
-        
-        with pytest.raises(ValidationError, match="consumed or sold"):
+
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+
+        with pytest.raises(ValidationError, match="used in a sale"):
             cancel_purchase_order(po)
+
+    def test_cannot_cancel_purchase_order_after_sale_and_cancel(self, user, product):
+        items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
+        po = create_purchase_order(user, items_data)
+        confirm_purchase_order(po)
+        stock = Stock.objects.get(purchase_order_item__order=po)
+
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+        cancel_sales_order(so)
+
+        stock.refresh_from_db()
+        assert stock.current_quantity == stock.initial_quantity
+
+        with pytest.raises(ValidationError, match="used in a sale"):
+            cancel_purchase_order(po)
+
+        po.refresh_from_db()
+        assert po.status == OrderStatus.CONFIRMED
+        assert Stock.objects.filter(id=stock.id).exists()
 
 @pytest.mark.django_db
 class TestSalesOrders:

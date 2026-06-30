@@ -91,8 +91,15 @@ def cancel_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
         stock_batches = Stock.objects.filter(purchase_order_item__order=order)
         
         for batch in stock_batches:
+            if batch.movements.filter(reason=MovementReason.SALE).exists():
+                raise ValidationError(
+                    "Cannot cancel: one or more stock batches have been used in a sale."
+                )
             if batch.current_quantity < batch.initial_quantity:
-                raise ValidationError("Cannot cancel a confirmed order because some of the received stock has already been consumed or sold.")
+                raise ValidationError(
+                    "Cannot cancel a confirmed order because some of the received stock "
+                    "has already been consumed or sold."
+                )
         
         # If untouched, safely delete the physical stock
         stock_batches.delete()

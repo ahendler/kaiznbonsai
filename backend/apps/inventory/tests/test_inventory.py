@@ -16,7 +16,12 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.inventory.commands import record_movement
-from apps.inventory.models import MovementReason, Product, Stock
+from apps.inventory.models import MovementReason, Product, Stock, StockMovement
+from apps.orders.commands import (
+    cancel_sales_order,
+    confirm_sales_order,
+    create_sales_order,
+)
 
 PRODUCTS_URL = '/api/v1/inventory/products/'
 STOCKS_URL = '/api/v1/inventory/stocks/'
@@ -314,9 +319,42 @@ class TestStockOperations:
         assert r.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_delete_own_stock_returns_204(self, client_a, user_a, product_a):
-        """Stock with no sales order attached can be deleted (e.g. entered in error)."""
+        """Unconsumed manual batch (RECEIPT only) can be deleted."""
         batch = make_stock(user_a, product_a, '10.000')
-        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        batch_id = batch.id
+        assert batch.movements.filter(reason=MovementReason.RECEIPT).count() == 1
+
+        r = client_a.delete(f'{STOCKS_URL}{batch_id}/')
         assert r.status_code == status.HTTP_204_NO_CONTENT
-        assert not Stock.objects.filter(id=batch.id).exists()
+        assert not Stock.objects.filter(id=batch_id).exists()
+        assert not StockMovement.objects.filter(stock_batch_id=batch_id).exists()
+
+    def test_delete_partially_sold_batch_returns_409(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '100.000')
+        so = create_sales_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+
+        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        assert r.status_code == status.HTTP_409_CONFLICT
+        assert Stock.objects.filter(id=batch.id).exists()
+
+    def test_delete_batch_after_sale_and_cancel_returns_409(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '100.000')
+        so = create_sales_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_price': 15.00}],
+        )
+        confirm_sales_order(so)
+        cancel_sales_order(so)
+
+        batch.refresh_from_db()
+        assert batch.current_quantity == batch.initial_quantity
+
+        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        assert r.status_code == status.HTTP_409_CONFLICT
+        assert 'sale' in r.data['detail'].lower()
+        assert Stock.objects.filter(id=batch.id).exists()
 
