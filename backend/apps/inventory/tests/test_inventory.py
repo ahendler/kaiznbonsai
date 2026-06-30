@@ -230,7 +230,7 @@ class TestStockOperations:
             'product': product_a.id,
             'lot_code': 'LOT-001',
             'initial_quantity': '100.000',
-            'current_quantity': '100.000',
+            'current_quantity': '999.000',
             'unit_cost': '12.50',
         }
         r = client_a.post(STOCKS_URL, payload, format='json')

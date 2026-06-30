@@ -283,13 +283,7 @@ class TestSalesOrders:
         victim_product = Product.objects.create(
             user=user, name="Victim Tea", sku="VIC-1", unit_of_measure="UNIT"
         )
-        victim_stock = Stock.objects.create(
-            user=user,
-            product=victim_product,
-            initial_quantity=100,
-            current_quantity=100,
-            unit_cost=5.00,
-        )
+        victim_stock = make_stock_with_receipt(user, victim_product, 100, unit_cost=Decimal('5.00'))
 
         so = SalesOrder.objects.create(user=attacker, status=OrderStatus.DRAFT)
         SalesOrderItem.objects.create(

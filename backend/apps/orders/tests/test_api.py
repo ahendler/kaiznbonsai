@@ -104,16 +104,19 @@ class TestSalesOrderAPI:
         assert SalesOrder.objects.count() == 1
 
     def test_confirm_sales_order_success(self, authenticated_client, product, user):
-        Stock.objects.create(user=user, product=product, initial_quantity=100, current_quantity=100, unit_cost=10.00)
-        
+        stock = make_stock_with_receipt(user, product, 100)
+
         so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
         so.items.create(product=product, quantity=50, unit_price=20.00)
-        
+
         url = f'/api/v1/orders/sales-orders/{so.id}/confirm/'
         response = authenticated_client.post(url)
         assert response.status_code == 200
         assert response.data['status'] == OrderStatus.CONFIRMED
-        assert Stock.objects.first().current_quantity == 50
+
+        stock.refresh_from_db()
+        assert stock.current_quantity == Decimal('50.000')
+        assert stock.movements.filter(reason=MovementReason.SALE).count() == 1
 
     def test_confirm_sales_order_insufficient_stock(self, authenticated_client, product, user):
         so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
@@ -156,9 +159,7 @@ class TestSalesOrderAPI:
         product = Product.objects.create(
             user=owner, name="Protected Stock", sku="PRT-1", unit_of_measure="UNIT"
         )
-        stock = Stock.objects.create(
-            user=owner, product=product, initial_quantity=100, current_quantity=100, unit_cost=10.00
-        )
+        stock = make_stock_with_receipt(owner, product, 100)
 
         so = SalesOrder.objects.create(user=attacker, status=OrderStatus.DRAFT)
         so.items.create(product=product, quantity=50, unit_price=20.00)
@@ -169,7 +170,8 @@ class TestSalesOrderAPI:
         assert response.status_code == 400
 
         stock.refresh_from_db()
-        assert stock.current_quantity == 100
+        assert stock.current_quantity == Decimal('100.000')
+        assert stock.movements.filter(reason=MovementReason.SALE).count() == 0
 
     def test_delete_draft_sales_order_returns_204(self, authenticated_client, user, product):
         so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)

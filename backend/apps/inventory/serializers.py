@@ -50,9 +50,14 @@ class StockSerializer(serializers.ModelSerializer):
             'unit_cost', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'product_name', 'product_sku', 
+            'id', 'product_name', 'product_sku',
             'created_at', 'updated_at'
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is None:
+            self.fields['current_quantity'].read_only = True
 
     def validate_initial_quantity(self, value):
         if value < 0:
