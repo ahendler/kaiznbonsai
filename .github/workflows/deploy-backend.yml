@@ -62,7 +62,6 @@ jobs:
             --version-label ${{ github.sha }} \
             --source-bundle S3Bucket=${{ secrets.EB_DEPLOY_BUCKET }},S3Key=kaiznbonsai-backend-${{ github.sha }}.zip
 
-          # 5. Update the Environment
           aws elasticbeanstalk update-environment \
             --environment-name KaiznBonsai-Prod \
             --version-label ${{ github.sha }}
