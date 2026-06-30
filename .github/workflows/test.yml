@@ -28,7 +28,7 @@ jobs:
       - name: Prepare environment
         run: |
           cp .env.example .env
-          sed -i 's/^SECRET_KEY=$/SECRET_KEY=ci-test-secret-key/' .env
+          sed -i 's/^SECRET_KEY=$/SECRET_KEY=ci-test-secret-key-at-least-32-chars-long/' .env
 
       - name: Run backend tests
         run: |
