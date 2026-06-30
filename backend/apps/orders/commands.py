@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, OrderStatus
-from apps.inventory.models import Product, Stock, MovementReason
+from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.inventory.commands import record_movement
 
 
@@ -157,9 +157,14 @@ def confirm_sales_order(order: SalesOrder) -> SalesOrder:
                 break
             
             deduct_amount = min(batch.current_quantity, remaining_to_deduct)
-            batch.current_quantity -= deduct_amount
+            record_movement(
+                user=order.user,
+                stock_batch=batch,
+                delta=-deduct_amount,
+                reason=MovementReason.SALE,
+                sales_order_item=item,
+            )
             remaining_to_deduct -= deduct_amount
-            batch.save(update_fields=['current_quantity', 'updated_at'])
 
     order.status = OrderStatus.CONFIRMED
     order.save(update_fields=['status', 'updated_at'])
@@ -169,21 +174,35 @@ def confirm_sales_order(order: SalesOrder) -> SalesOrder:
 def cancel_sales_order(order: SalesOrder) -> SalesOrder:
     """
     Transitions SO to CANCELLED.
-    If CONFIRMED, performs a simple refund by adding the quantity back to the newest stock batch.
+    If CONFIRMED, reverses each SALE movement with a matching RETURN on the original batch.
     """
     if order.status == OrderStatus.CANCELLED:
         raise ValidationError("Order is already cancelled.")
 
     if order.status == OrderStatus.CONFIRMED:
-        for item in order.items.select_related('product').all():
-            # Find the most recently created stock batch to absorb the refund
-            latest_batch = Stock.objects.filter(product=item.product).order_by('-created_at').first()
-            if latest_batch:
-                latest_batch.current_quantity += item.quantity
-                latest_batch.initial_quantity += item.quantity # Increase initial to prevent "consumed" lock breaking
-                latest_batch.save(update_fields=['current_quantity', 'initial_quantity', 'updated_at'])
-            else:
-                raise ValidationError(f"Cannot refund {item.product.name}: no stock batches exist to absorb the return.")
+        sale_movements = list(
+            StockMovement.objects.filter(
+                user=order.user,
+                sales_order_item__order=order,
+                reason=MovementReason.SALE,
+            ).select_related('stock_batch', 'sales_order_item')
+        )
+
+        if not sale_movements:
+            raise ValidationError("Cannot cancel: no stock movements found for this order.")
+
+        batch_ids = {m.stock_batch_id for m in sale_movements}
+        list(Stock.objects.filter(id__in=batch_ids).select_for_update())
+
+        for movement in sale_movements:
+            batch = Stock.objects.get(pk=movement.stock_batch_id)
+            record_movement(
+                user=order.user,
+                stock_batch=batch,
+                delta=-movement.delta,
+                reason=MovementReason.RETURN,
+                sales_order_item=movement.sales_order_item,
+            )
 
     order.status = OrderStatus.CANCELLED
     order.save(update_fields=['status', 'updated_at'])
