@@ -2,7 +2,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, OrderStatus
-from apps.inventory.models import Product, Stock
+from apps.inventory.models import Product, Stock, MovementReason
+from apps.inventory.commands import record_movement
 
 
 def _validate_products_belong_to_user(user, items_data: list) -> None:
@@ -53,15 +54,22 @@ def confirm_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
         raise ValidationError("Only DRAFT purchase orders can be confirmed.")
 
     for item in order.items.all():
-        Stock.objects.create(
+        stock = Stock.objects.create(
             user=order.user,
             product=item.product,
             initial_quantity=item.quantity,
-            current_quantity=item.quantity,
+            current_quantity=Decimal('0'),
             unit_cost=item.unit_cost,
             lot_code=item.lot_code or f"PO{order.id}-ITEM{item.id}",
             best_before=item.best_before,
-            purchase_order_item=item
+            purchase_order_item=item,
+        )
+        record_movement(
+            user=order.user,
+            stock_batch=stock,
+            delta=Decimal(str(item.quantity)),
+            reason=MovementReason.RECEIPT,
+            purchase_order_item=item,
         )
 
     order.status = OrderStatus.CONFIRMED

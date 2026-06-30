@@ -10,11 +10,13 @@ Coverage:
 """
 import pytest
 from decimal import Decimal
+from django.db.models import Sum
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.inventory.models import Product, Stock
+from apps.inventory.commands import record_movement
+from apps.inventory.models import MovementReason, Product, Stock
 
 PRODUCTS_URL = '/api/v1/inventory/products/'
 STOCKS_URL = '/api/v1/inventory/stocks/'
@@ -73,15 +75,23 @@ def product_b(user_b):
 
 
 def make_stock(user, product, quantity, cost='10.00', lot='LOT-A'):
-    """Helper to create a stock batch directly in the database."""
-    return Stock.objects.create(
+    """Helper to create a stock batch with a RECEIPT movement."""
+    stock = Stock.objects.create(
         user=user,
         product=product,
         lot_code=lot,
         initial_quantity=Decimal(quantity),
-        current_quantity=Decimal(quantity),
+        current_quantity=Decimal('0'),
         unit_cost=Decimal(cost),
     )
+    record_movement(
+        user=user,
+        stock_batch=stock,
+        delta=Decimal(quantity),
+        reason=MovementReason.RECEIPT,
+    )
+    stock.refresh_from_db()
+    return stock
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +232,13 @@ class TestStockOperations:
         assert r.status_code == status.HTTP_201_CREATED
         assert r.data['lot_code'] == 'LOT-001'
         assert Decimal(r.data['unit_cost']) == Decimal('12.50')
+        assert Decimal(r.data['initial_quantity']) == Decimal('100.000')
+        assert Decimal(r.data['current_quantity']) == Decimal('100.000')
+
+        batch = Stock.objects.get(id=r.data['id'])
+        assert batch.movements.filter(reason=MovementReason.RECEIPT).count() == 1
+        total_delta = batch.movements.aggregate(total=Sum('delta'))['total']
+        assert total_delta == batch.current_quantity
 
     def test_create_stock_injects_request_user_as_owner(self, client_a, user_a, product_a):
         payload = {
@@ -247,6 +264,29 @@ class TestStockOperations:
         assert r.status_code == status.HTTP_200_OK
         batch.refresh_from_db()
         assert batch.current_quantity == Decimal('1000.000')
+        assert batch.initial_quantity == Decimal('1000.000')
+
+        adjustment = batch.movements.get(reason=MovementReason.ADJUSTMENT)
+        assert adjustment.delta == Decimal('900.000')
+        total_delta = batch.movements.aggregate(total=Sum('delta'))['total']
+        assert total_delta == batch.current_quantity
+
+    def test_patch_corrects_initial_quantity(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '100.000')
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'initial_quantity': '1000.000'},
+            format='json'
+        )
+        assert r.status_code == status.HTTP_200_OK
+        batch.refresh_from_db()
+        assert batch.current_quantity == Decimal('1000.000')
+        assert batch.initial_quantity == Decimal('1000.000')
+
+        adjustment = batch.movements.get(reason=MovementReason.ADJUSTMENT)
+        assert adjustment.delta == Decimal('900.000')
+        total_delta = batch.movements.aggregate(total=Sum('delta'))['total']
+        assert total_delta == batch.current_quantity
 
     def test_patch_another_users_stock_returns_404(self, client_a, user_b, product_b):
         batch_b = make_stock(user_b, product_b, '200.000')

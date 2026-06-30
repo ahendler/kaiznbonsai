@@ -2,7 +2,7 @@ import pytest
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from apps.accounts.models import User
-from apps.inventory.models import Product, Stock
+from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder, SalesOrderItem
 from apps.orders.commands import (
     create_purchase_order,
@@ -50,6 +50,7 @@ class TestPurchaseOrders:
         assert stock.current_quantity == Decimal('100.000')
         assert stock.unit_cost == Decimal('10.50')
         assert stock.lot_code == 'LOT1'
+        assert stock.movements.filter(reason=MovementReason.RECEIPT).count() == 1
 
     def test_cancel_confirmed_purchase_order(self, user, product):
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]

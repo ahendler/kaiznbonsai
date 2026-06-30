@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django.db import transaction
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
@@ -6,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import generics
 
-from apps.inventory.models import Product, Stock
+from apps.inventory.commands import record_movement
+from apps.inventory.models import MovementReason, Product, Stock
 from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 
@@ -64,12 +68,41 @@ class StockViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(product_id=product_id)
         return queryset
 
+    @transaction.atomic
     def perform_create(self, serializer):
-        """
-        Forcefully inject the logged-in user as the owner of the stock batch.
-        Note: The serializer already validated that the chosen Product belongs to this user.
-        """
-        serializer.save(user=self.request.user)
+        initial = serializer.validated_data['initial_quantity']
+        stock = serializer.save(
+            user=self.request.user,
+            initial_quantity=initial,
+            current_quantity=Decimal('0'),
+        )
+        record_movement(
+            user=self.request.user,
+            stock_batch=stock,
+            delta=initial,
+            reason=MovementReason.RECEIPT,
+        )
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        stock = serializer.instance
+        validated = serializer.validated_data
+
+        new_current = validated.get('current_quantity', stock.current_quantity)
+        new_initial = validated.get('initial_quantity', stock.initial_quantity)
+        target_qty = new_current if 'current_quantity' in validated else new_initial
+
+        delta = target_qty - stock.current_quantity
+        if delta != 0:
+            record_movement(
+                user=self.request.user,
+                stock_batch=stock,
+                delta=delta,
+                reason=MovementReason.ADJUSTMENT,
+            )
+            stock.initial_quantity += delta
+
+        serializer.save()
 
     def destroy(self, request, *args, **kwargs):
         """

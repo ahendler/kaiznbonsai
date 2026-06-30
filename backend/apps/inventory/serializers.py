@@ -111,15 +111,5 @@ class StockSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "Current Qty": "Current quantity is read-only and is automatically deducted by Sales Orders. Do not edit this manually."
                     })
-                # Typo correction on an unconsumed batch: keep initial in sync.
-                data['initial_quantity'] = new_current_qty
-            elif (
-                not is_consumed
-                and not self.instance.purchase_order_item_id
-                and 'initial_quantity' in data
-                and data['initial_quantity'] != self.instance.initial_quantity
-            ):
-                # Editing initial qty on an unconsumed manual batch also updates current.
-                data['current_quantity'] = data['initial_quantity']
 
         return data
