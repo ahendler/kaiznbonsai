@@ -1,5 +1,4 @@
 import api from '@/api/client'
-import { REFRESH_TOKEN_KEY } from '@/api/authRefresh'
 import type { AuthTokens, User } from '@/types/auth'
 
 interface LoginPayload {
@@ -20,10 +19,7 @@ export const authApi = {
   login: (payload: LoginPayload) =>
     api.post<AuthTokens>('/auth/login/', payload).then((r) => r.data),
 
-  logout: () => {
-    sessionStorage.removeItem(REFRESH_TOKEN_KEY)
-    return api.post('/auth/logout/')
-  },
+  logout: () => api.post('/auth/logout/'),
 
   me: () => api.get<User>('/auth/me/').then((r) => r.data),
 }

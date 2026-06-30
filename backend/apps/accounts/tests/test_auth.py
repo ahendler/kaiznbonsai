@@ -87,3 +87,39 @@ class TestLogout:
     def test_logout_without_auth_returns_401(self, client):
         r = client.post(LOGOUT_URL)
         assert r.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+class TestRefresh:
+    def test_refresh_via_cookie_returns_access_token(self, client, user):
+        login = client.post(
+            LOGIN_URL,
+            {'email': user.email, 'password': 'StrongPass123!'},
+            format='json',
+        )
+        assert login.status_code == status.HTTP_200_OK
+        refresh_cookie = login.cookies.get('refresh_token')
+        assert refresh_cookie is not None
+
+        client.cookies['refresh_token'] = refresh_cookie.value
+        r = client.post(REFRESH_URL, {}, format='json')
+        assert r.status_code == status.HTTP_200_OK
+        assert 'access' in r.data
+        assert 'refresh' not in r.data
+        assert 'refresh_token' in r.cookies
+
+    def test_refresh_without_cookie_returns_401(self, client):
+        r = client.post(REFRESH_URL, {}, format='json')
+        assert r.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_refresh_via_body_without_cookie_returns_401(self, client, user):
+        login = client.post(
+            LOGIN_URL,
+            {'email': user.email, 'password': 'StrongPass123!'},
+            format='json',
+        )
+        refresh_token = login.cookies['refresh_token'].value
+
+        bare_client = APIClient()
+        r = bare_client.post(REFRESH_URL, {'refresh': refresh_token}, format='json')
+        assert r.status_code == status.HTTP_401_UNAUTHORIZED
