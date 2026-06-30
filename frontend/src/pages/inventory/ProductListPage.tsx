@@ -15,11 +15,13 @@ import {
   CopyButton,
   Modal,
   Box,
+  TextInput,
+  Select,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { useIntersection } from '@mantine/hooks'
+import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hooks'
 import {
   IconPlus,
   IconEdit,
@@ -27,12 +29,28 @@ import {
   IconBoxSeam,
   IconCopy,
   IconCheck,
+  IconSearch,
 } from '@tabler/icons-react'
 import { listProducts, deleteProduct } from '@/api/inventory'
-import type { Product } from '@/api/inventory'
-import { useDisclosure } from '@mantine/hooks'
+import type { Product, ProductListFilters } from '@/api/inventory'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
 import StockDrawer from '@/components/inventory/StockDrawer'
+
+const UNIT_FILTER_OPTIONS = [
+  { value: 'KG', label: 'Kilogram (KG)' },
+  { value: 'G', label: 'Gram (G)' },
+  { value: 'L', label: 'Liter (L)' },
+  { value: 'ML', label: 'Milliliter (mL)' },
+  { value: 'UNIT', label: 'Unit' },
+] as const
+
+type StockFilter = 'all' | 'in_stock' | 'out_of_stock'
+
+const STOCK_FILTER_OPTIONS = [
+  { value: 'all', label: 'All stock' },
+  { value: 'in_stock', label: 'In stock only' },
+  { value: 'out_of_stock', label: 'Out of stock only' },
+] as const
 
 const CopyAction = ({ value }: { value: string }) => (
   <CopyButton value={value} timeout={2000}>
@@ -93,6 +111,18 @@ const TruncatedTextWithTooltip = ({
 }
 
 export default function ProductListPage() {
+  const [search, setSearch] = useState('')
+  const [unitFilter, setUnitFilter] = useState<Product['unit_of_measure'] | null>(null)
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
+
+  const listFilters: ProductListFilters = {
+    search: debouncedSearch,
+    ...(unitFilter ? { unit_of_measure: unitFilter } : {}),
+    ...(stockFilter === 'in_stock' ? { in_stock: true } : {}),
+    ...(stockFilter === 'out_of_stock' ? { in_stock: false } : {}),
+  }
+
   const {
     data,
     fetchNextPage,
@@ -100,8 +130,8 @@ export default function ProductListPage() {
     isFetchingNextPage,
     status,
   } = useInfiniteQuery({
-    queryKey: ['products', 'infinite'],
-    queryFn: ({ pageParam }) => listProducts(pageParam as string | null),
+    queryKey: ['products', 'infinite', listFilters],
+    queryFn: ({ pageParam }) => listProducts(pageParam as string | null, listFilters),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null
@@ -159,6 +189,7 @@ export default function ProductListPage() {
   }, [entry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const products = data?.pages.flatMap((page) => page.results) ?? []
+  const hasActiveFilters = Boolean(debouncedSearch || unitFilter || stockFilter !== 'all')
 
   return (
     <Container size="xl" p={0}>
@@ -171,6 +202,30 @@ export default function ProductListPage() {
         >
           Add Product
         </Button>
+      </Group>
+
+      <Group align="flex-end" mb="md" wrap="wrap" gap="md">
+        <TextInput
+          className="min-w-[220px] flex-1"
+          placeholder="Search by name or SKU"
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+        />
+        <Select
+          className="w-[180px]"
+          placeholder="All units"
+          clearable
+          data={[...UNIT_FILTER_OPTIONS]}
+          value={unitFilter}
+          onChange={(value) => setUnitFilter(value as Product['unit_of_measure'] | null)}
+        />
+        <Select
+          className="w-[200px]"
+          data={[...STOCK_FILTER_OPTIONS]}
+          value={stockFilter}
+          onChange={(value) => setStockFilter((value as StockFilter | null) ?? 'all')}
+        />
       </Group>
 
       {status === 'pending' ? (
@@ -188,19 +243,23 @@ export default function ProductListPage() {
           <Stack align="center" gap="sm">
             <IconBoxSeam size={48} color="var(--mantine-color-gray-4)" />
             <Text c="dimmed" size="lg" fw={500}>
-              No products found
+              {hasActiveFilters ? 'No products match your filters' : 'No products found'}
             </Text>
             <Text c="dimmed" size="sm">
-              Get started by adding your first product.
+              {hasActiveFilters
+                ? 'Try adjusting search, unit, or stock filters.'
+                : 'Get started by adding your first product.'}
             </Text>
-            <Button
-              variant="light"
-              color="green"
-              mt="sm"
-              onClick={handleAddProduct}
-            >
-              Add Product
-            </Button>
+            {!hasActiveFilters && (
+              <Button
+                variant="light"
+                color="green"
+                mt="sm"
+                onClick={handleAddProduct}
+              >
+                Add Product
+              </Button>
+            )}
           </Stack>
         </Center>
       ) : (
