@@ -50,17 +50,13 @@ class LoginView(TokenObtainPairView):
 
 
 class RefreshView(TokenRefreshView):
-    """Reads the refresh token from the httpOnly cookie.
+    """Reads the refresh token from the httpOnly cookie only."""
 
-    Falls back to the request body when the cookie is unavailable (e.g. Safari
-    ITP or privacy-hardened browsers). The frontend keeps a sessionStorage
-    copy for that fallback path.
-    """
     permission_classes = (AllowAny,)
 
     def post(self, request, *args, **kwargs):
         cookie_name = settings.SIMPLE_JWT['AUTH_COOKIE']
-        refresh_token = request.COOKIES.get(cookie_name) or request.data.get('refresh')
+        refresh_token = request.COOKIES.get(cookie_name)
 
         if not refresh_token:
             return Response(
