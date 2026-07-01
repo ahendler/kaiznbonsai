@@ -14,6 +14,12 @@ from apps.inventory.commands import record_movement
 from apps.inventory.models import MovementReason, Product, Stock, UnitType
 from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
 from apps.inventory.financial_period import parse_financial_period
+from apps.inventory.financial_product_filters import (
+    parse_activity,
+    parse_exclude_no_movement,
+    parse_margin_band,
+    parse_search,
+)
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 
 VALID_UNIT_VALUES = {choice.value for choice in UnitType}
@@ -162,15 +168,21 @@ class OverallFinancialsView(APIView):
 class ProductFinancialsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ProductFinancialSerializer
-    pagination_class = None
 
     def get_queryset(self):
         date_from, date_to = parse_financial_period(
             self.request.query_params.get('from'),
             self.request.query_params.get('to'),
         )
+        activity = parse_activity(self.request.query_params.get('activity'))
+        if parse_exclude_no_movement(self.request.query_params.get('exclude_no_movement')):
+            if activity == 'all':
+                activity = 'movement'
         return get_products_with_financials(
             self.request.user,
             date_from=date_from,
             date_to=date_to,
+            search=parse_search(self.request.query_params.get('search')),
+            margin_band=parse_margin_band(self.request.query_params.get('margin_band')),
+            activity=activity,
         )

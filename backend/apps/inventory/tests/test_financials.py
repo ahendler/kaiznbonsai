@@ -162,7 +162,7 @@ def test_financials_api_endpoints(auth_client, financial_data):
 
     res = auth_client.get(reverse('inventory:product-financials'))
     assert res.status_code == status.HTTP_200_OK
-    products = res.json()
+    products = res.json()['results']
     assert len(products) == 2
 
     p1_data = next(p for p in products if p['sku'] == 'P1')
@@ -331,5 +331,258 @@ def test_financials_api_period_validation(auth_client, financial_data):
         {'from': '2026-03-01', 'to': '2026-03-31'},
     )
     assert res.status_code == status.HTTP_200_OK
-    p2_data = next(p for p in res.json() if p['sku'] == 'P2')
+    p2_data = next(p for p in res.json()['results'] if p['sku'] == 'P2')
     assert float(p2_data['qty_sold']) == 10.0
+
+
+PRODUCT_FINANCIALS_URL = reverse('inventory:product-financials')
+
+
+@pytest.fixture
+def many_products(test_user):
+    """Create 21 products for pagination tests (page size 20)."""
+    products = []
+    for i in range(21):
+        products.append(
+            Product.objects.create(
+                user=test_user,
+                name=f'Product {i:02d}',
+                sku=f'SKU-{i:02d}',
+                unit_of_measure='UNIT',
+            )
+        )
+    return products
+
+
+@pytest.fixture
+def loss_product(test_user):
+    product = Product.objects.create(
+        user=test_user,
+        name='Loss Leader',
+        sku='LOSS-01',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=product,
+        initial_quantity=Decimal('10'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('20.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('10'),
+        reason=MovementReason.RECEIPT,
+    )
+    so = create_sales_order(
+        test_user,
+        [{'product_id': product.id, 'quantity': 10, 'unit_price': 5.00}],
+    )
+    confirm_sales_order(so)
+    return product
+
+
+@pytest.mark.django_db
+def test_product_financials_api_paginated_shape(auth_client, many_products):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL)
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert 'results' in data
+    assert 'next' in data
+    assert 'previous' in data
+    assert len(data['results']) == 20
+    assert data['next'] is not None
+    assert data['previous'] is None
+
+
+@pytest.mark.django_db
+def test_product_financials_api_second_page(auth_client, many_products):
+    first = auth_client.get(PRODUCT_FINANCIALS_URL).json()
+    assert first['next'] is not None
+
+    res = auth_client.get(first['next'])
+    assert res.status_code == status.HTTP_200_OK
+    second = res.json()
+    assert len(second['results']) == 1
+    assert second['next'] is None
+
+    first_ids = {p['id'] for p in first['results']}
+    second_ids = {p['id'] for p in second['results']}
+    assert first_ids.isdisjoint(second_ids)
+
+
+@pytest.mark.django_db
+def test_product_financials_api_search_by_sku(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'search': 'P1'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    assert len(results) == 1
+    assert results[0]['sku'] == 'P1'
+
+
+@pytest.mark.django_db
+def test_product_financials_api_search_with_period(auth_client, financial_data):
+    mar = _aware(2026, 3, 10)
+    _set_movement_dates(StockMovement.objects.filter(reason=MovementReason.SALE), mar)
+
+    res = auth_client.get(
+        PRODUCT_FINANCIALS_URL,
+        {'search': 'P2', 'from': '2026-03-01', 'to': '2026-03-31'},
+    )
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    assert len(results) == 1
+    assert results[0]['sku'] == 'P2'
+    assert float(results[0]['qty_sold']) == 10.0
+
+
+@pytest.mark.django_db
+def test_product_financials_api_margin_band_negative(auth_client, financial_data, loss_product):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'margin_band': 'negative'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    assert len(results) == 1
+    assert results[0]['sku'] == 'LOSS-01'
+    assert float(results[0]['profit']) < 0
+
+
+@pytest.mark.django_db
+def test_product_financials_api_margin_band_low_includes_zero_revenue(
+    auth_client,
+    financial_data,
+    test_user,
+):
+    Product.objects.create(
+        user=test_user,
+        name='Never Sold',
+        sku='IDLE-01',
+        unit_of_measure='UNIT',
+    )
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'margin_band': 'low'})
+    assert res.status_code == status.HTTP_200_OK
+    skus = {p['sku'] for p in res.json()['results']}
+    assert 'IDLE-01' in skus
+    assert 'LOSS-01' not in skus
+
+
+@pytest.mark.django_db
+def test_product_financials_api_exclude_no_movement(auth_client, financial_data, test_user):
+    Product.objects.create(
+        user=test_user,
+        name='Idle',
+        sku='IDLE-01',
+        unit_of_measure='UNIT',
+    )
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'activity': 'movement'})
+    assert res.status_code == status.HTTP_200_OK
+    skus = {p['sku'] for p in res.json()['results']}
+    assert 'IDLE-01' not in skus
+    assert 'P1' in skus
+    assert 'P2' in skus
+
+
+@pytest.mark.django_db
+def test_product_financials_api_exclude_no_movement_with_period(auth_client, financial_data):
+    res = auth_client.get(
+        PRODUCT_FINANCIALS_URL,
+        {'from': '2026-04-01', 'to': '2026-04-30', 'activity': 'movement'},
+    )
+    assert res.status_code == status.HTTP_200_OK
+    assert res.json()['results'] == []
+
+
+@pytest.mark.django_db
+def test_product_financials_api_exclude_no_movement_keeps_purchases_only(
+    auth_client,
+    financial_data,
+):
+    mar = _aware(2026, 3, 15)
+    _set_movement_dates(
+        StockMovement.objects.filter(stock_batch__product__sku='P1', reason=MovementReason.RECEIPT),
+        _aware(2026, 2, 10),
+    )
+    _set_movement_dates(
+        StockMovement.objects.filter(stock_batch__product__sku='P1', reason=MovementReason.SALE),
+        mar,
+    )
+    _set_movement_dates(
+        StockMovement.objects.filter(stock_batch__product__sku='P2', reason=MovementReason.RECEIPT),
+        mar,
+    )
+    _set_movement_dates(
+        StockMovement.objects.filter(stock_batch__product__sku='P2', reason=MovementReason.SALE),
+        _aware(2026, 2, 10),
+    )
+
+    res = auth_client.get(
+        PRODUCT_FINANCIALS_URL,
+        {'from': '2026-03-01', 'to': '2026-03-31', 'activity': 'movement'},
+    )
+    assert res.status_code == status.HTTP_200_OK
+    skus = {p['sku'] for p in res.json()['results']}
+    assert skus == {'P1', 'P2'}
+
+
+@pytest.mark.django_db
+def test_product_financials_api_activity_stale(auth_client, financial_data, test_user):
+    Product.objects.create(
+        user=test_user,
+        name='Idle',
+        sku='IDLE-01',
+        unit_of_measure='UNIT',
+    )
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'activity': 'stale'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    assert len(results) == 1
+    assert results[0]['sku'] == 'IDLE-01'
+
+
+@pytest.mark.django_db
+def test_product_financials_api_activity_movement(auth_client, financial_data, test_user):
+    Product.objects.create(
+        user=test_user,
+        name='Idle',
+        sku='IDLE-01',
+        unit_of_measure='UNIT',
+    )
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'activity': 'movement'})
+    assert res.status_code == status.HTTP_200_OK
+    skus = {p['sku'] for p in res.json()['results']}
+    assert 'IDLE-01' not in skus
+    assert 'P1' in skus
+    assert 'P2' in skus
+
+
+@pytest.mark.django_db
+def test_product_financials_api_invalid_activity(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'activity': 'unknown'})
+    assert res.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_product_financials_api_invalid_margin_band(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'margin_band': 'unknown'})
+    assert res.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_product_financials_selector_search_and_margin_band(test_user, financial_data, loss_product):
+    products = get_products_with_financials(test_user, search='LOSS', margin_band='negative')
+    assert products.count() == 1
+    assert products.get().sku == 'LOSS-01'
+
+
+@pytest.mark.django_db
+def test_product_financials_selector_exclude_no_movement(test_user, financial_data):
+    Product.objects.create(
+        user=test_user,
+        name='Idle',
+        sku='IDLE-01',
+        unit_of_measure='UNIT',
+    )
+    all_products = get_products_with_financials(test_user)
+    active_only = get_products_with_financials(test_user, activity='movement')
+    assert all_products.count() == 3
+    assert active_only.count() == 2

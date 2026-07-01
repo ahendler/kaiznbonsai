@@ -1,4 +1,10 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  type QueryClient,
+} from '@tanstack/react-query';
+import type { PaginatedResponse } from './inventory';
 import api from './client';
 import type { FinancialPeriodParams } from '@/utils/financialPeriod';
 
@@ -9,11 +15,43 @@ function periodKeyPart(period: FinancialPeriodParams): FinancialPeriodParams | '
   return 'all_time';
 }
 
+export type MarginBand = 'negative' | 'low' | 'medium' | 'high';
+export type ActivityFilter = 'all' | 'movement' | 'stale';
+
+export interface ProductFinancialListFilters {
+  from?: string;
+  to?: string;
+  search?: string;
+  margin_band?: MarginBand;
+  activity?: ActivityFilter;
+}
+
+function productFinancialFiltersKey(
+  filters: ProductFinancialListFilters,
+): ProductFinancialListFilters {
+  const key: ProductFinancialListFilters = {};
+  if (filters.from && filters.to) {
+    key.from = filters.from;
+    key.to = filters.to;
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    key.search = search;
+  }
+  if (filters.margin_band) {
+    key.margin_band = filters.margin_band;
+  }
+  if (filters.activity && filters.activity !== 'all') {
+    key.activity = filters.activity;
+  }
+  return key;
+}
+
 export const FINANCIALS_QUERY_KEYS = {
   overall: (period: FinancialPeriodParams = {}) =>
     ['overall-financials', periodKeyPart(period)] as const,
-  products: (period: FinancialPeriodParams = {}) =>
-    ['product-financials', periodKeyPart(period)] as const,
+  productsInfinite: (filters: ProductFinancialListFilters = {}) =>
+    ['product-financials', 'infinite', productFinancialFiltersKey(filters)] as const,
 };
 
 export function invalidateFinancials(queryClient: QueryClient): void {
@@ -42,29 +80,64 @@ export interface ProductFinancials {
   margin: string;
 }
 
-const financialsApi = {
-  getOverall: async (period: FinancialPeriodParams = {}): Promise<OverallFinancials> => {
-    const response = await api.get('/inventory/financials/', { params: period });
-    return response.data;
-  },
-  getProducts: async (period: FinancialPeriodParams = {}): Promise<ProductFinancials[]> => {
-    const response = await api.get('/inventory/financials/products/', { params: period });
-    return response.data;
-  },
+export const listProductFinancials = async (
+  cursor: string | null = null,
+  filters: ProductFinancialListFilters = {},
+): Promise<PaginatedResponse<ProductFinancials>> => {
+  const params: Record<string, string> = {};
+  if (cursor) {
+    params.cursor = cursor;
+  }
+  if (filters.from) {
+    params.from = filters.from;
+  }
+  if (filters.to) {
+    params.to = filters.to;
+  }
+  const search = filters.search?.trim();
+  if (search) {
+    params.search = search;
+  }
+  if (filters.margin_band) {
+    params.margin_band = filters.margin_band;
+  }
+  if (filters.activity && filters.activity !== 'all') {
+    params.activity = filters.activity;
+  }
+  const response = await api.get('/inventory/financials/products/', { params });
+  return response.data;
 };
 
 export const useOverallFinancials = (period: FinancialPeriodParams = {}) => {
   return useQuery({
     queryKey: FINANCIALS_QUERY_KEYS.overall(period),
-    queryFn: () => financialsApi.getOverall(period),
+    queryFn: () => listOverallFinancials(period),
     placeholderData: keepPreviousData,
   });
 };
 
-export const useProductFinancials = (period: FinancialPeriodParams = {}) => {
-  return useQuery({
-    queryKey: FINANCIALS_QUERY_KEYS.products(period),
-    queryFn: () => financialsApi.getProducts(period),
+export const useInfiniteProductFinancials = (
+  filters: ProductFinancialListFilters = {},
+) => {
+  return useInfiniteQuery({
+    queryKey: FINANCIALS_QUERY_KEYS.productsInfinite(filters),
+    queryFn: ({ pageParam }) =>
+      listProductFinancials(pageParam as string | null, filters),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.next) {
+        return null;
+      }
+      const url = new URL(lastPage.next);
+      return url.searchParams.get('cursor');
+    },
     placeholderData: keepPreviousData,
   });
 };
+
+async function listOverallFinancials(
+  period: FinancialPeriodParams = {},
+): Promise<OverallFinancials> {
+  const response = await api.get('/inventory/financials/', { params: period });
+  return response.data;
+}
