@@ -1,4 +1,5 @@
 import type { MovementReason, StockMovementListItem } from '@/api/activity'
+import { buildOrderPath } from '@/utils/orders'
 import { formatQuantity } from '@/utils/financials'
 
 export const MOVEMENT_REASON_OPTIONS = [
@@ -68,10 +69,10 @@ export function formatBatchLabel(lotCode: string, batchId: string): string {
 
 export function getOrderDetailPath(movement: StockMovementListItem): string | null {
   if (movement.sales_order) {
-    return `/orders?tab=sales&orderId=${movement.sales_order.id}`
+    return buildOrderPath('sales', movement.sales_order.id)
   }
   if (movement.purchase_order) {
-    return `/orders?tab=purchases&orderId=${movement.purchase_order.id}`
+    return buildOrderPath('purchases', movement.purchase_order.id)
   }
   return null
 }

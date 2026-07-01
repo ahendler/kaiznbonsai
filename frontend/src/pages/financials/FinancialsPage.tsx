@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   SimpleGrid, Card, Text, Group, Center, Loader,
-  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper, Affix, ActionIcon, Tooltip,
+  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper,
 } from '@mantine/core'
 import {
-  IconCash, IconTrendingUp, IconTrendingDown, IconPackage, IconChartBar, IconSparkles,
+  IconCash, IconTrendingUp, IconTrendingDown, IconPackage, IconChartBar,
 } from '@tabler/icons-react'
-import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hooks'
-import AIChatDrawer from '@/components/assistant/AIChatDrawer'
-import type { ChatMessage } from '@/api/assistant'
+import { useDebouncedValue, useIntersection } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import DashboardProductFilters from '@/components/dashboard/DashboardProductFilters'
 import {
@@ -39,16 +37,13 @@ import {
   type FinancialPeriod,
 } from '@/utils/financialPeriod'
 
-export default function DashboardPage() {
+export default function FinancialsPage() {
   const [period, setPeriod] = useState<FinancialPeriod>(DEFAULT_FINANCIAL_PERIOD)
   const [search, setSearch] = useState('')
   const [marginBand, setMarginBand] = useState<MarginBand | null>(null)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [ordering, setOrdering] = useState<ProductFinancialOrdering>('-revenue')
   const [debouncedSearch] = useDebouncedValue(search, 300)
-
-  const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
 
   const periodReady = isFinancialPeriodReady(period)
   const periodParams = periodReady ? toFinancialPeriodParams(period) : {}
@@ -342,29 +337,6 @@ export default function DashboardPage() {
             )}
         </Paper>
       </Stack>
-      )}
-
-      <AIChatDrawer
-        opened={chatOpened}
-        onClose={closeChat}
-        messages={chatMessages}
-        setMessages={setChatMessages}
-      />
-
-      {!chatOpened && (
-        <Affix position={{ bottom: 24, right: 24 }}>
-          <Tooltip label="Ask about your data" position="left" withArrow>
-            <ActionIcon
-              onClick={openChat}
-              size={52}
-              radius="xl"
-              variant="filled"
-              aria-label="AI assistant"
-            >
-              <IconSparkles size={24} stroke={1.5} />
-            </ActionIcon>
-          </Tooltip>
-        </Affix>
       )}
     </Stack>
   )

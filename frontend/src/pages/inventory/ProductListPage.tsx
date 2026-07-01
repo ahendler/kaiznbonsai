@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Container,
   Group,
@@ -60,6 +61,12 @@ function unitFilterButtonLabel(selected: UnitOfMeasure[]): string {
 }
 
 type StockFilter = 'all' | 'in_stock' | 'out_of_stock'
+
+function parseStockFilter(value: string | null): StockFilter {
+  if (value === 'out_of_stock') return 'out_of_stock'
+  if (value === 'in_stock') return 'in_stock'
+  return 'all'
+}
 
 const STOCK_FILTER_OPTIONS = [
   { value: 'all', label: 'All stock' },
@@ -134,9 +141,12 @@ const TruncatedTextWithTooltip = ({
 }
 
 export default function ProductListPage() {
+  const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [unitFilters, setUnitFilters] = useState<UnitOfMeasure[]>([])
-  const [stockFilter, setStockFilter] = useState<StockFilter>('all')
+  const [stockFilter, setStockFilter] = useState<StockFilter>(() =>
+    parseStockFilter(searchParams.get('stock')),
+  )
   const [debouncedSearch] = useDebouncedValue(search, 300)
 
   const listFilters: ProductListFilters = {
