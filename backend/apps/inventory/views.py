@@ -10,9 +10,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import generics
 
+from apps.core.pagination import ProductFinancialsCursorPagination
 from apps.inventory.commands import record_movement
 from apps.inventory.models import MovementReason, Product, Stock, UnitType
 from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
+from apps.inventory.financial_period import parse_financial_period
+from apps.inventory.financial_product_filters import (
+    parse_activity,
+    parse_margin_band,
+    parse_ordering,
+    parse_search,
+)
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 
 VALID_UNIT_VALUES = {choice.value for choice in UnitType}
@@ -147,13 +155,33 @@ class OverallFinancialsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        financials = get_overall_financials(request.user)
+        date_from, date_to = parse_financial_period(
+            request.query_params.get('from'),
+            request.query_params.get('to'),
+        )
+        financials = get_overall_financials(
+            request.user,
+            date_from=date_from,
+            date_to=date_to,
+        )
         return Response(financials)
 
 class ProductFinancialsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ProductFinancialSerializer
-    pagination_class = None
+    pagination_class = ProductFinancialsCursorPagination
 
     def get_queryset(self):
-        return get_products_with_financials(self.request.user)
+        date_from, date_to = parse_financial_period(
+            self.request.query_params.get('from'),
+            self.request.query_params.get('to'),
+        )
+        return get_products_with_financials(
+            self.request.user,
+            date_from=date_from,
+            date_to=date_to,
+            search=parse_search(self.request.query_params.get('search')),
+            margin_band=parse_margin_band(self.request.query_params.get('margin_band')),
+            activity=parse_activity(self.request.query_params.get('activity')),
+            ordering=parse_ordering(self.request.query_params.get('ordering')),
+        )

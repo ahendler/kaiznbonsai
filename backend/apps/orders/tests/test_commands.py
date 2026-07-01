@@ -1,4 +1,5 @@
 import pytest
+from datetime import date
 from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
@@ -6,6 +7,7 @@ from apps.accounts.models import User
 from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder, SalesOrderItem
 from apps.inventory.commands import record_movement
+from apps.orders.constants import StockAllocationStrategy
 from apps.orders.commands import (
     create_purchase_order,
     confirm_purchase_order,
@@ -29,13 +31,14 @@ def product(user):
     )
 
 
-def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('5.00')):
+def make_stock_with_receipt(user, product, quantity, unit_cost=Decimal('5.00'), best_before=None):
     stock = Stock.objects.create(
         user=user,
         product=product,
         initial_quantity=Decimal(str(quantity)),
         current_quantity=Decimal('0'),
         unit_cost=unit_cost,
+        best_before=best_before,
     )
     record_movement(
         user=user,
@@ -166,6 +169,91 @@ class TestSalesOrders:
         for stock in stocks:
             total_delta = stock.movements.aggregate(total=Sum('delta'))['total']
             assert total_delta == stock.current_quantity
+
+    def test_confirm_default_fifo_matches_explicit_fifo(self, user, product):
+        make_stock_with_receipt(user, product, 10)
+        make_stock_with_receipt(user, product, 20)
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so)
+
+        stocks = list(Stock.objects.order_by('created_at'))
+        assert stocks[0].current_quantity == Decimal('5.000')
+        assert stocks[1].current_quantity == Decimal('20.000')
+
+    def test_confirm_fefo_prefers_earlier_best_before(self, user, product):
+        later = make_stock_with_receipt(user, product, 10, best_before=date(2026, 12, 31))
+        sooner = make_stock_with_receipt(user, product, 10, best_before=date(2026, 6, 1))
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so, allocation_strategy=StockAllocationStrategy.FEFO)
+
+        sooner.refresh_from_db()
+        later.refresh_from_db()
+        assert sooner.current_quantity == Decimal('5.000')
+        assert later.current_quantity == Decimal('10.000')
+
+    def test_confirm_fefo_dated_before_undated(self, user, product):
+        undated = make_stock_with_receipt(user, product, 10, best_before=None)
+        dated = make_stock_with_receipt(user, product, 10, best_before=date(2026, 6, 1))
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so, allocation_strategy=StockAllocationStrategy.FEFO)
+
+        undated.refresh_from_db()
+        dated.refresh_from_db()
+        assert dated.current_quantity == Decimal('5.000')
+        assert undated.current_quantity == Decimal('10.000')
+
+    def test_confirm_fefo_same_best_before_uses_fifo_tiebreak(self, user, product):
+        same_date = date(2026, 6, 1)
+        older = make_stock_with_receipt(user, product, 10, best_before=same_date)
+        newer = make_stock_with_receipt(user, product, 10, best_before=same_date)
+        assert older.created_at < newer.created_at
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so, allocation_strategy=StockAllocationStrategy.FEFO)
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        assert older.current_quantity == Decimal('5.000')
+        assert newer.current_quantity == Decimal('10.000')
+
+    def test_confirm_fefo_all_undated_matches_fifo(self, user, product):
+        make_stock_with_receipt(user, product, 10)
+        make_stock_with_receipt(user, product, 20)
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 15, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so, allocation_strategy=StockAllocationStrategy.FEFO)
+
+        stocks = list(Stock.objects.order_by('created_at'))
+        assert stocks[0].current_quantity == Decimal('0.000')
+        assert stocks[1].current_quantity == Decimal('15.000')
+
+    def test_confirm_invalid_allocation_strategy(self, user, product):
+        make_stock_with_receipt(user, product, 10)
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        with pytest.raises(ValidationError, match="Invalid allocation"):
+            confirm_sales_order(so, allocation_strategy='BAD')
 
     def test_insufficient_stock(self, user, product):
         make_stock_with_receipt(user, product, 10)

@@ -29,7 +29,7 @@ Write-side inventory mutations go through `apps/inventory/commands.py::record_mo
 | Reason | Created by | Purpose |
 |--------|------------|---------|
 | `RECEIPT` | PO confirm, manual stock create | Opening quantity when a batch is introduced |
-| `SALE` | `confirm_sales_order` | FIFO deduction linked to a sales line |
+| `SALE` | `confirm_sales_order` | Stock deduction linked to a sales line (see Stock allocation below) |
 | `RETURN` | `cancel_sales_order` | Reverses exact `SALE` rows on the original batches |
 | `ADJUSTMENT` | `StockViewSet.perform_update` | Data-entry typo correction on unconsumed manual batches only |
 
@@ -59,11 +59,26 @@ PO confirm and manual create both use this pattern. Never set `current_quantity`
 
 COGS is the sum of `-delta × stock_batch.unit_cost` over `StockMovement` rows where `reason=SALE` and the linked sales order is `CONFIRMED`.
 
-Revenue is `quantity × unit_price` on `SalesOrderItem` for `CONFIRMED` orders. Inventory value is `Sum(current_quantity × unit_cost)` on `Stock`.
+Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SALE` movements (movement-based so multi-batch confirms and period filters stay aligned). Inventory value is `Sum(current_quantity × unit_cost)` on `Stock` — always a **current snapshot**, not period-scoped.
 
 When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
 
-Implemented in `apps/inventory/selectors.py`.
+**Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue, COGS, gross profit, margin, and per-product qty purchased/sold are scoped to `StockMovement.created_at` on `RECEIPT` and confirmed `SALE` rows. Inventory value is unchanged.
+
+Implemented in `apps/inventory/selectors.py` and `apps/inventory/financial_period.py`.
+
+### Stock allocation on sales order confirm
+
+When a draft sales order is confirmed, `confirm_sales_order` deducts stock batch-by-batch via `record_movement(SALE)`. The batch order is chosen per confirm request:
+
+| `allocation_strategy` | Ordering | UI label (confirm modal) |
+|-----------------------|----------|---------------------------|
+| `FIFO` (default) | `created_at` ascending | Oldest stock first |
+| `FEFO` | `best_before` ascending, nulls last; then `created_at` | Expiring soonest |
+
+Passed in the body of `POST /api/v1/orders/sales-orders/{id}/confirm/` as `allocation_strategy`. Not stored on the order — each confirm is an explicit choice. Implementation: `apps/orders/allocation.py::available_batches_for_allocation()`.
+
+**Hybrid FEFO null policy:** Batches without `best_before` are consumed after all dated batches. If every batch lacks a date, FEFO matches FIFO. Expiry is optional on PO lines and manual stock entry.
 
 ### `django-simple-history` on `Stock`
 

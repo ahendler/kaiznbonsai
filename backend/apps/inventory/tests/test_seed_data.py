@@ -1,11 +1,20 @@
 import pytest
+from datetime import date, timedelta
 from decimal import Decimal
 from django.core.management import call_command
 from django.db.models import Sum
+from django.utils import timezone
 
-from apps.inventory.models import Product, UnitType
+from apps.inventory.models import Product, StockMovement, UnitType
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder
+
+
+def _last_month_range(today: date) -> tuple[date, date]:
+    first_this_month = today.replace(day=1)
+    last_month_end = first_this_month - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    return last_month_start, last_month_end
 
 
 @pytest.mark.django_db
@@ -55,3 +64,26 @@ def test_generate_seed_data_command():
 
     multi_batch_products = sum(1 for p in products if p.stock_batches.count() >= 2)
     assert multi_batch_products >= 17
+
+    movement_months = {
+        (m.created_at.year, m.created_at.month)
+        for m in StockMovement.objects.filter(user=demo_user)
+    }
+    assert len(movement_months) >= 3
+
+    today = timezone.now().date()
+    this_month_start = today.replace(day=1)
+    last_month_start, last_month_end = _last_month_range(today)
+
+    this_month = get_overall_financials(
+        demo_user,
+        date_from=this_month_start,
+        date_to=today,
+    )
+    last_month = get_overall_financials(
+        demo_user,
+        date_from=last_month_start,
+        date_to=last_month_end,
+    )
+    assert this_month['revenue'] > Decimal('0')
+    assert last_month['revenue'] > Decimal('0')

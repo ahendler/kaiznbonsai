@@ -34,10 +34,16 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
     cogs = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     profit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    qty_purchased = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
+    qty_sold = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
 
     class Meta:
         model = Product
-        fields = ['id', 'name', 'sku', 'revenue', 'cogs', 'profit', 'margin']
+        fields = [
+            'id', 'name', 'sku', 'unit_of_measure',
+            'qty_purchased', 'qty_sold',
+            'revenue', 'cogs', 'profit', 'margin',
+        ]
 
 class StockSerializer(serializers.ModelSerializer):
     # Helpful read-only fields for the frontend so it doesn't have to make extra API calls
