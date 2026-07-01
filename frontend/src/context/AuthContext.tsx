@@ -8,7 +8,7 @@ import {
 } from 'react'
 import type { User } from '@/types/auth'
 import type { AuthAction } from '@/types/AuthContextTypes'
-import { setAccessToken } from '@/api/authToken'
+import { registerOnAccessTokenRefreshed, setAccessToken } from '@/api/authToken'
 
 // ---------------------------------------------------------------------------
 // State & actions
@@ -74,6 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     setAccessToken(state.accessToken)
   }, [state.accessToken])
+
+  useEffect(() => {
+    return registerOnAccessTokenRefreshed((token) => {
+      dispatch({ type: 'SET_ACCESS_TOKEN', payload: token })
+    })
+  }, [])
 
   useEffect(() => {
     // Attempt a silent refresh on mount. If a valid httpOnly cookie exists,

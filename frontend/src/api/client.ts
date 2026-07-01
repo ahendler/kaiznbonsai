@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getAccessToken } from '@/api/authToken'
+import { getAccessToken, persistRefreshedAccessToken } from '@/api/authToken'
 import { getOrStartRefresh } from '@/api/authRefresh'
 
 const BASE = import.meta.env.VITE_API_URL ?? '' // unset in prod → same-origin /api/v1
@@ -44,6 +44,7 @@ api.interceptors.response.use(
 
       try {
         const newToken = await getOrStartRefresh()
+        persistRefreshedAccessToken(newToken)
         pendingQueue.forEach((cb) => cb(newToken))
         pendingQueue = []
         original.headers.Authorization = `Bearer ${newToken}`
