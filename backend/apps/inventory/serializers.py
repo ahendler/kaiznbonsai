@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.inventory.models import Product, Stock
+from apps.inventory.models import Product, Stock, StockMovement
 
 PRODUCT_NOT_FOUND = 'Product not found.'
 
@@ -129,3 +129,55 @@ class StockSerializer(serializers.ModelSerializer):
                     })
 
         return data
+
+
+class MovementProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'unit_of_measure']
+
+
+class MovementStockBatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Stock
+        fields = ['id', 'lot_code']
+
+
+class StockMovementListSerializer(serializers.ModelSerializer):
+    product = MovementProductSerializer(source='stock_batch.product', read_only=True)
+    stock_batch = MovementStockBatchSerializer(read_only=True)
+    sales_order = serializers.SerializerMethodField()
+    purchase_order = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id',
+            'created_at',
+            'reason',
+            'delta',
+            'product',
+            'stock_batch',
+            'sales_order',
+            'purchase_order',
+        ]
+
+    def get_sales_order(self, obj):
+        if not obj.sales_order_item_id:
+            return None
+        order = obj.sales_order_item.order
+        return {
+            'id': order.id,
+            'title': order.title or '',
+            'status': order.status,
+        }
+
+    def get_purchase_order(self, obj):
+        if not obj.purchase_order_item_id:
+            return None
+        order = obj.purchase_order_item.order
+        return {
+            'id': order.id,
+            'title': order.title or '',
+            'status': order.status,
+        }

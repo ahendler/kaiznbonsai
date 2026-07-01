@@ -33,7 +33,14 @@ Write-side inventory mutations go through `apps/inventory/commands.py::record_mo
 | `RETURN` | `cancel_sales_order` | Reverses exact `SALE` rows on the original batches |
 | `ADJUSTMENT` | `StockViewSet.perform_update` | Data-entry typo correction on unconsumed manual batches only |
 
-Movement rows are **not exposed in the API** — internal audit and COGS only.
+Movement rows power COGS, financial period aggregates, and the **Stock History** UI. They are exposed read-only via:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/inventory/movements/` | Tenant-wide ledger; cursor-paginated; filterable by `reason`, `product`, `stock_batch`, `from`/`to`, `search` |
+| `GET /api/v1/inventory/stocks/{id}/movements/` | Same serializer, scoped to one batch (stock drawer) |
+
+Writes still go only through `record_movement()` in commands — never via these list endpoints.
 
 ### Batch creation
 

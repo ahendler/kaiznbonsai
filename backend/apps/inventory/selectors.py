@@ -173,3 +173,39 @@ def get_products_with_financials(
         products = products.filter(qty_purchased=0, qty_sold=0)
 
     return products.order_by(*financial_ordering_with_tiebreaker(ordering))
+
+
+def list_stock_movements(
+    user,
+    *,
+    reasons: list[str] | None = None,
+    product_id: int | None = None,
+    stock_batch_id=None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    search: str | None = None,
+):
+    qs = StockMovement.objects.filter(user=user).select_related(
+        'stock_batch__product',
+        'sales_order_item__order',
+        'purchase_order_item__order',
+    )
+
+    qs = _movement_date_filter(qs, date_from=date_from, date_to=date_to)
+
+    if reasons:
+        qs = qs.filter(reason__in=reasons)
+    if product_id is not None:
+        qs = qs.filter(stock_batch__product_id=product_id)
+    if stock_batch_id is not None:
+        qs = qs.filter(stock_batch_id=stock_batch_id)
+    if search:
+        qs = qs.filter(
+            Q(stock_batch__product__name__icontains=search)
+            | Q(stock_batch__product__sku__icontains=search)
+            | Q(stock_batch__lot_code__icontains=search)
+            | Q(sales_order_item__order__title__icontains=search)
+            | Q(purchase_order_item__order__title__icontains=search)
+        )
+
+    return qs.order_by('-created_at', '-id')

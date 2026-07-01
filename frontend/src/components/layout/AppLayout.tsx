@@ -17,6 +17,7 @@ import {
   IconLogout,
   IconDashboard,
   IconReceipt,
+  IconHistory,
 } from '@tabler/icons-react'
 import { useAuth } from '@/context/AuthContext'
 import { authApi } from '@/api/auth'
@@ -25,6 +26,7 @@ const navItems = [
   { label: 'Dashboard', icon: IconDashboard, path: '/' },
   { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
   { label: 'Orders', icon: IconReceipt, path: '/orders' },
+  { label: 'Stock History', icon: IconHistory, path: '/history' },
 ]
 
 function isNavItemActive(pathname: string, path: string): boolean {

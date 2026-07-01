@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Modal, Tooltip, Box } from '@mantine/core'
+import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Tooltip, Box } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCheck, IconX } from '@tabler/icons-react'
 import { useDisclosure } from '@mantine/hooks'
@@ -10,7 +10,11 @@ import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCa
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
 import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
 
-export function PurchaseOrderTable() {
+interface PurchaseOrderTableProps {
+  onViewOrder?: (order: PurchaseOrder) => void
+}
+
+export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
   const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = usePurchaseOrders()
   const confirmMutation = useConfirmPurchaseOrder()
   const cancelMutation = useCancelPurchaseOrder()
@@ -20,7 +24,6 @@ export function PurchaseOrderTable() {
     action: 'confirm' | 'cancel'
     status: PurchaseOrder['status']
   } | null>(null)
-  const [viewOrder, setViewOrder] = useState<PurchaseOrder | null>(null)
 
   const orders = ordersData?.pages.flatMap(page => page.results) || []
 
@@ -50,7 +53,7 @@ export function PurchaseOrderTable() {
     const totalCost = sumLineTotals(order.items, 'unit_cost')
 
     return (
-      <Table.Tr key={order.id} style={{ cursor: 'pointer' }} onClick={() => setViewOrder(order)}>
+      <Table.Tr key={order.id} style={{ cursor: onViewOrder ? 'pointer' : undefined }} onClick={() => onViewOrder?.(order)}>
         <Table.Td>#{order.id}</Table.Td>
         <Table.Td>{new Date(order.created_at).toLocaleDateString()}</Table.Td>
         <Table.Td>
@@ -147,53 +150,6 @@ export function PurchaseOrderTable() {
           else handleCancel(id)
         }}
       />
-
-      <Modal
-        opened={!!viewOrder}
-        onClose={() => setViewOrder(null)}
-        title={
-          <Group>
-            <Text size="lg" fw={600}>Purchase Order #{viewOrder?.id}</Text>
-            {viewOrder?.title && <Badge variant="light">{viewOrder.title}</Badge>}
-            {viewOrder && <Badge color={orderStatusColor(viewOrder.status)}>{viewOrder.status}</Badge>}
-          </Group>
-        }
-        size="xl"
-      >
-        <Table striped mt="md">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Product</Table.Th>
-              <Table.Th>Qty</Table.Th>
-              <Table.Th>Unit Cost</Table.Th>
-              <Table.Th>Line Total</Table.Th>
-              <Table.Th>Lot Code</Table.Th>
-              <Table.Th>Best Before</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {viewOrder?.items.map((item) => (
-              <Table.Tr key={item.id}>
-                <Table.Td>
-                  <Text fw={500}>{item.product_details?.name}</Text>
-                  <Text size="xs" c="dimmed">{item.product_details?.sku}</Text>
-                </Table.Td>
-                <Table.Td>{parseFloat(item.quantity)}</Table.Td>
-                <Table.Td>{formatOrderMoney(parseFloat(item.unit_cost))}</Table.Td>
-                <Table.Td>{formatOrderMoney(parseFloat(item.quantity) * parseFloat(item.unit_cost))}</Table.Td>
-                <Table.Td>{item.lot_code || '-'}</Table.Td>
-                <Table.Td>{item.best_before || '-'}</Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-        <Group justify="space-between" mt="xl">
-          <Text fw={600}>
-            Total Price: {viewOrder ? formatOrderMoney(sumLineTotals(viewOrder.items, 'unit_cost')) : ''}
-          </Text>
-          <Button variant="default" onClick={() => setViewOrder(null)}>Close</Button>
-        </Group>
-      </Modal>
     </>
   )
 }
