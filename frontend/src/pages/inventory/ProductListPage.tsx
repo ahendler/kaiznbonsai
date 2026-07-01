@@ -14,7 +14,6 @@ import {
   Tooltip,
   CopyButton,
   Modal,
-  Box,
   TextInput,
   Select,
 } from '@mantine/core'
@@ -25,7 +24,6 @@ import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hook
 import {
   IconPlus,
   IconEdit,
-  IconTrash,
   IconBoxSeam,
   IconCopy,
   IconCheck,
@@ -33,6 +31,7 @@ import {
 } from '@tabler/icons-react'
 import { listProducts, deleteProduct } from '@/api/inventory'
 import type { Product, ProductListFilters } from '@/api/inventory'
+import { getApiErrorMessage } from '@/api/errors'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
 import StockDrawer from '@/components/inventory/StockDrawer'
 
@@ -52,10 +51,18 @@ const STOCK_FILTER_OPTIONS = [
   { value: 'out_of_stock', label: 'Out of stock only' },
 ] as const
 
-const CopyAction = ({ value }: { value: string }) => (
+const CopyAction = ({
+  value,
+  copyLabel = 'Copy',
+  copiedLabel = 'Copied',
+}: {
+  value: string
+  copyLabel?: string
+  copiedLabel?: string
+}) => (
   <CopyButton value={value} timeout={2000}>
     {({ copied, copy }) => (
-      <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow position="right">
+      <Tooltip label={copied ? copiedLabel : copyLabel} withArrow position="right">
         <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} size="xs">
           {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         </ActionIcon>
@@ -158,11 +165,15 @@ export default function ProductListPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setProductToDelete(null)
     },
-    onError: () => {
+    onError: (error) => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete product. It may have existing stock batches.',
+        title: 'Cannot delete product',
+        message: getApiErrorMessage(
+          error,
+          'Failed to delete product. Stock batch history may still exist for traceability.',
+        ),
         color: 'red',
+        autoClose: 8000,
       })
     },
   })
@@ -291,7 +302,7 @@ export default function ProductListPage() {
                           />
                         )}
                       </div>
-                      <CopyAction value={product.name} />
+                      <CopyAction value={product.name} copyLabel="Copy product name" />
                     </Group>
                   </Table.Td>
                   <Table.Td className="max-w-[200px]">
@@ -336,30 +347,6 @@ export default function ProductListPage() {
                       >
                         <IconEdit size={16} />
                       </ActionIcon>
-                      {parseFloat(product.total_stock || '0') > 0 ? (
-                        <Tooltip label="Cannot delete a product with active stock batches. Remove all stock first.">
-                          <Box display="inline-block">
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              disabled
-                              className="pointer-events-none"
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Box>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip label="Delete product">
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={() => setProductToDelete(product)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -382,6 +369,13 @@ export default function ProductListPage() {
         opened={modalOpened}
         onClose={closeModal}
         product={editingProduct}
+        onRequestDelete={(product) => {
+          closeModal()
+          setProductToDelete(product)
+        }}
+        onViewStock={(product) => {
+          setStockProduct(product)
+        }}
       />
 
       <Modal
@@ -402,24 +396,41 @@ export default function ProductListPage() {
           <Text size="sm" c="dimmed">
             This action cannot be undone.
           </Text>
-          {parseFloat(productToDelete?.total_stock || '0') > 0 && (
+          {productToDelete?.has_stock_batches && (
             <Text size="sm" c="red" mt="sm">
-              You cannot delete a product that currently has stock. Please remove all stock batches first.
+              This product still has stock batches (including fully consumed). Batch history is
+              kept for traceability — use View Stock to review before deleting.
             </Text>
           )}
         </Stack>
-        <Group justify="flex-end">
+        <Group justify="space-between">
+          {productToDelete?.has_stock_batches ? (
+            <Button
+              variant="light"
+              color="green"
+              onClick={() => {
+                setStockProduct(productToDelete)
+                setProductToDelete(null)
+              }}
+            >
+              View stock batches
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Group>
           <Button variant="default" onClick={() => setProductToDelete(null)} disabled={deleteMutation.isPending}>
             Cancel
           </Button>
           <Button
             color="red"
             loading={deleteMutation.isPending}
-            disabled={parseFloat(productToDelete?.total_stock || '0') > 0}
+            disabled={productToDelete?.has_stock_batches}
             onClick={() => productToDelete && deleteMutation.mutate(productToDelete.id)}
           >
             Delete
           </Button>
+          </Group>
         </Group>
       </Modal>
 
@@ -428,6 +439,7 @@ export default function ProductListPage() {
         onClose={() => setStockProduct(null)}
         productId={stockProduct?.id || ''}
         productName={stockProduct?.name || ''}
+        hasVoidedBatches={stockProduct?.has_voided_batches ?? false}
       />
     </Container>
   )

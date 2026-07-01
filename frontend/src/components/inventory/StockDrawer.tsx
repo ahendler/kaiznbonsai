@@ -15,16 +15,20 @@ import {
   Tooltip,
   Box,
   Modal,
+  Switch,
 } from '@mantine/core'
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { IconBan, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
+import { IconBan, IconEdit, IconCheck, IconX, IconHistory, IconInfoCircle } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, voidStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
 import { invalidateFinancials } from '@/api/financials'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 import BatchActivityPanel from '@/components/inventory/BatchActivityPanel'
+
+const VOIDED_BATCH_TOOLTIP =
+  'A voided batch was removed from available stock. The batch and its history are kept for traceability.'
 
 interface StockFormValues {
   initial_quantity: string
@@ -38,14 +42,25 @@ interface StockDrawerProps {
   onClose: () => void
   productId: string
   productName: string
+  hasVoidedBatches?: boolean
 }
 
-export default function StockDrawer({ opened, onClose, productId, productName }: StockDrawerProps) {
+export default function StockDrawer({
+  opened,
+  onClose,
+  productId,
+  productName,
+  hasVoidedBatches = false,
+}: StockDrawerProps) {
   const queryClient = useQueryClient()
-  
+  const [showVoided, setShowVoided] = useState(false)
+  const [voidedToggleVisible, setVoidedToggleVisible] = useState(hasVoidedBatches)
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['stocks', productId],
-    queryFn: ({ pageParam }) => listStocks(productId, pageParam as string | null),
+    queryKey: ['stocks', productId, showVoided ? 'with-voided' : 'active'],
+    queryFn: ({ pageParam }) => listStocks(productId, pageParam as string | null, {
+      include_voided: showVoided,
+    }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null
@@ -100,6 +115,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     mutationFn: (id: string) => voidStock(id),
     onSuccess: () => {
       notifications.show({ title: 'Success', message: 'Batch voided successfully', color: 'green' })
+      setVoidedToggleVisible(true)
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
@@ -158,8 +174,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       setExpandedBatchId(null)
       setEditingStockId(null)
       setEditFieldErrors({})
+      setShowVoided(false)
+      return
     }
-  }, [opened])
+    setVoidedToggleVisible(hasVoidedBatches)
+  }, [opened, hasVoidedBatches, productId])
 
   return (
     <Drawer
@@ -216,7 +235,29 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
         </Paper>
 
         <div>
-          <Text fw={500} mb="sm">Current Batches</Text>
+          <Group justify="space-between" align="center" mb="sm">
+            <Text fw={500}>Current Batches</Text>
+            {voidedToggleVisible && (
+              <Group gap={4} wrap="nowrap">
+                <Switch
+                  label="Show voided batches"
+                  checked={showVoided}
+                  onChange={(event) => setShowVoided(event.currentTarget.checked)}
+                  size="sm"
+                />
+                <Tooltip label={VOIDED_BATCH_TOOLTIP} multiline maw={300}>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    aria-label="About voided batches"
+                  >
+                    <IconInfoCircle size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            )}
+          </Group>
           <div style={{ overflowX: 'auto' }}>
             <Table striped highlightOnHover>
               <Table.Thead>
@@ -233,20 +274,26 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                 {stocks.length === 0 ? (
                   <Table.Tr>
                     <Table.Td colSpan={6}>
-                      <Text c="dimmed" ta="center">No stock batches found.</Text>
+                      <Text c="dimmed" ta="center">
+                        {voidedToggleVisible && !showVoided
+                          ? 'No active batches. Enable “Show voided batches” to review removed stock.'
+                          : 'No stock batches found.'}
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                 ) : (
                   stocks.map((stock) => {
                     const isEditing = editingStockId === stock.id
+                    const isVoided = Boolean(stock.voided_at)
                     const isConsumed = parseFloat(stock.current_quantity) < parseFloat(stock.initial_quantity)
                     const isPoLinked = stock.is_po_linked
                     const poQtyCostTooltip = 'This batch was received via a purchase order. Quantity and cost cannot be manually edited.'
                     
                     return (
                       <>
-                      <Table.Tr key={stock.id}>
+                      <Table.Tr key={stock.id} style={{ opacity: isVoided ? 0.65 : undefined }}>
                         <Table.Td>
+                          <Group gap="xs" wrap="nowrap">
                           {isEditing ? (
                             <TextInput
                               size="xs"
@@ -260,7 +307,17 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                             />
                           ) : stock.lot_code ? (
                             <Badge variant="outline" color="gray">{stock.lot_code}</Badge>
-                          ) : '-'}
+                          ) : (
+                            <Text>-</Text>
+                          )}
+                          {isVoided && (
+                            <Tooltip label={VOIDED_BATCH_TOOLTIP} multiline maw={300}>
+                              <Badge variant="light" color="gray" size="xs" style={{ cursor: 'help' }}>
+                                Voided
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          </Group>
                         </Table.Td>
                         <Table.Td>
                           {isEditing ? (
@@ -352,7 +409,23 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                           )}
                         </Table.Td>
                         <Table.Td>
-                          {isEditing ? (
+                          {isVoided ? (
+                            <Group gap="xs" wrap="nowrap">
+                              <Tooltip label={expandedBatchId === stock.id ? 'Hide activity' : 'Show activity'}>
+                                <ActionIcon
+                                  color={expandedBatchId === stock.id ? 'green' : 'gray'}
+                                  variant={expandedBatchId === stock.id ? 'light' : 'subtle'}
+                                  onClick={() => {
+                                    setExpandedBatchId((current) => (
+                                      current === stock.id ? null : stock.id
+                                    ))
+                                  }}
+                                >
+                                  <IconHistory size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          ) : isEditing ? (
                             <Group gap="xs" wrap="nowrap">
                               <ActionIcon
                                 color="green"

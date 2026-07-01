@@ -6,14 +6,32 @@ PRODUCT_NOT_FOUND = 'Product not found.'
 class ProductSerializer(serializers.ModelSerializer):
     # This field will be populated by a database annotation in the ViewSet
     total_stock = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True, default=0)
+    has_stock_batches = serializers.SerializerMethodField()
+    has_voided_batches = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'description', 'sku', 'unit_of_measure', 
-            'total_stock', 'created_at', 'updated_at'
+            'id', 'name', 'description', 'sku', 'unit_of_measure',
+            'total_stock', 'has_stock_batches', 'has_voided_batches',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'total_stock', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'total_stock', 'has_stock_batches', 'has_voided_batches',
+            'created_at', 'updated_at',
+        ]
+
+    def get_has_stock_batches(self, obj):
+        batch_count = getattr(obj, 'batch_count', None)
+        if batch_count is not None:
+            return batch_count > 0
+        return obj.stock_batches.exists()
+
+    def get_has_voided_batches(self, obj):
+        voided_count = getattr(obj, 'voided_batch_count', None)
+        if voided_count is not None:
+            return voided_count > 0
+        return obj.stock_batches.filter(voided_at__isnull=False).exists()
 
     def validate_sku(self, value):
         """

@@ -17,6 +17,8 @@ export interface Product {
   description: string
   unit_of_measure: 'KG' | 'G' | 'L' | 'ML' | 'UNIT'
   total_stock: string // Decimal returned as string from DRF
+  has_stock_batches: boolean
+  has_voided_batches: boolean
   created_at: string
   updated_at: string
 }
@@ -113,10 +115,21 @@ export const deleteProduct = async (id: string): Promise<void> => {
 // Stocks API
 // ----------------------------------------------------------------------------
 
-export const listStocks = async (productId: string, cursor: string | null = null): Promise<PaginatedResponse<Stock>> => {
+export interface StockListOptions {
+  include_voided?: boolean
+}
+
+export const listStocks = async (
+  productId: string,
+  cursor: string | null = null,
+  options: StockListOptions = {},
+): Promise<PaginatedResponse<Stock>> => {
   const params: Record<string, string> = { product: productId }
   if (cursor) {
     params.cursor = cursor
+  }
+  if (options.include_voided) {
+    params.include_voided = 'true'
   }
   const response = await api.get('/inventory/stocks/', { params })
   return response.data

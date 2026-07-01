@@ -255,6 +255,7 @@ class TestTotalStockAnnotation:
         r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_200_OK
         assert Decimal(r.data['total_stock']) == Decimal('0')
+        assert r.data['has_stock_batches'] is False
 
     def test_total_stock_only_counts_own_products_batches(self, client_a, user_a, user_b, product_a, product_b):
         make_stock(user_a, product_a, '100.000', lot='LOT-A1')
@@ -292,11 +293,28 @@ class TestProductDeletionGuard:
         make_stock(user_a, product_a, '10.000')
         r = client_a.delete(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_409_CONFLICT
+        assert 'traceability' in r.data['detail'].lower()
 
     def test_delete_product_without_stock_returns_204(self, client_a, product_a):
         r = client_a.delete(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_204_NO_CONTENT
         assert not Product.objects.filter(id=product_a.id).exists()
+
+    def test_list_product_has_stock_batches_when_consumed(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+        so = create_sales_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_price': 5.00}],
+        )
+        confirm_sales_order(so)
+
+        r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
+        assert r.status_code == status.HTTP_200_OK
+        assert Decimal(r.data['total_stock']) == Decimal('0')
+        assert r.data['has_stock_batches'] is True
+
+        batch.refresh_from_db()
+        assert batch.current_quantity == Decimal('0')
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +442,15 @@ class TestStockOperations:
         assert batch.current_quantity == Decimal('0')
         assert StockMovement.objects.filter(stock_batch_id=batch_id).count() == 2
         assert batch.movements.filter(reason=MovementReason.VOID).exists()
+
+        product_r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
+        assert product_r.data['has_voided_batches'] is True
+        assert product_r.data['has_stock_batches'] is True
+
+        movements_r = client_a.get(f'{STOCKS_URL}{batch_id}/movements/')
+        assert movements_r.status_code == status.HTTP_200_OK
+        reasons = {row['reason'] for row in movements_r.data['results']}
+        assert reasons == {MovementReason.RECEIPT, MovementReason.VOID}
 
     def test_list_stocks_excludes_voided_batches(self, client_a, user_a, product_a):
         batch = make_stock(user_a, product_a, '10.000')

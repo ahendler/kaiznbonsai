@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Modal, TextInput, Select, Textarea, Button, Group } from '@mantine/core'
+import { Modal, TextInput, Select, Textarea, Button, Group, Stack, Text, Tooltip, Box } from '@mantine/core'
 import { useForm, isNotEmpty } from '@mantine/form'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,13 +7,24 @@ import { createProduct, updateProduct } from '@/api/inventory'
 import type { Product, ProductCreatePayload } from '@/api/inventory'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 
+const DELETE_BLOCKED_TOOLTIP =
+  'This product has stock batches (including fully consumed). Review them in the stock drawer — batch history is kept for traceability.'
+
 interface ProductFormModalProps {
   opened: boolean
   onClose: () => void
   product?: Product | null
+  onRequestDelete?: (product: Product) => void
+  onViewStock?: (product: Product) => void
 }
 
-export default function ProductFormModal({ opened, onClose, product }: ProductFormModalProps) {
+export default function ProductFormModal({
+  opened,
+  onClose,
+  product,
+  onRequestDelete,
+  onViewStock,
+}: ProductFormModalProps) {
   const queryClient = useQueryClient()
   const isEditing = !!product
 
@@ -31,7 +42,6 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
     },
   })
 
-  // Pre-fill form when editing a product
   useEffect(() => {
     if (product && opened) {
       form.setValues({
@@ -82,6 +92,8 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
     mutation.mutate(values)
   }
 
+  const deleteBlocked = isEditing && product.has_stock_batches
+
   return (
     <Modal
       opened={opened}
@@ -121,13 +133,56 @@ export default function ProductFormModal({ opened, onClose, product }: ProductFo
           {...form.getInputProps('description')}
         />
 
-        <Group justify="flex-end" mt="xl">
-          <Button variant="light" onClick={onClose} color="gray">
-            Cancel
-          </Button>
-          <Button type="submit" color="green" loading={mutation.isPending}>
-            {isEditing ? 'Save Changes' : 'Create Product'}
-          </Button>
+        {isEditing && deleteBlocked && (
+          <Text size="sm" c="dimmed" mt="md">
+            Stock batches block deletion even when on-hand quantity is zero.{' '}
+            {onViewStock && (
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                p={0}
+                h="auto"
+                onClick={() => {
+                  onViewStock(product)
+                  onClose()
+                }}
+              >
+                View stock batches
+              </Button>
+            )}
+          </Text>
+        )}
+
+        <Group justify="space-between" mt="xl" align="center">
+          {isEditing ? (
+            deleteBlocked ? (
+              <Tooltip label={DELETE_BLOCKED_TOOLTIP} multiline maw={280}>
+                <Box>
+                  <Button color="red" variant="light" disabled>
+                    Delete product
+                  </Button>
+                </Box>
+              </Tooltip>
+            ) : (
+              <Button
+                color="red"
+                variant="light"
+                onClick={() => onRequestDelete?.(product)}
+              >
+                Delete product
+              </Button>
+            )
+          ) : (
+            <span />
+          )}
+          <Group gap="sm">
+            <Button variant="light" onClick={onClose} color="gray">
+              Cancel
+            </Button>
+            <Button type="submit" color="green" loading={mutation.isPending}>
+              {isEditing ? 'Save Changes' : 'Create Product'}
+            </Button>
+          </Group>
         </Group>
       </form>
     </Modal>

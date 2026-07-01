@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Sum, DecimalField
+from django.db.models import Count, Q, Sum, DecimalField
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
@@ -89,7 +89,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Sum('stock_batches__current_quantity'),
                 0,
                 output_field=DecimalField()
-            )
+            ),
+            batch_count=Count('stock_batches'),
+            voided_batch_count=Count(
+                'stock_batches',
+                filter=Q(stock_batches__voided_at__isnull=False),
+            ),
         )
 
         unit = self.request.query_params.get('unit_of_measure')
@@ -120,8 +125,13 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         if product.stock_batches.exists():
             return Response(
-                {"detail": "Cannot delete a product with active stock batches. Remove all stock first."},
-                status=status.HTTP_409_CONFLICT
+                {
+                    'detail': (
+                        'Cannot delete a product with stock batch history. '
+                        'Batches may be fully consumed but are kept for traceability.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
             )
         return super().destroy(request, *args, **kwargs)
 
@@ -232,7 +242,7 @@ class StockViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def movements(self, request, pk=None):
-        stock = self.get_object()
+        stock = self._get_stock_batch(include_voided=True)
         queryset = build_movement_queryset(request, stock_batch_id=stock.id)
         paginator = StockMovementCursorPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
