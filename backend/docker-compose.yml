@@ -29,6 +29,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - SECRET_KEY=${SECRET_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - DEBUG=False
     depends_on:
       db:
