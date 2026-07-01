@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from apps.accounts.models import User
-from apps.inventory.commands import record_movement
+from apps.inventory.commands import record_movement, void_manual_stock_batch
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 from apps.orders.commands import (
@@ -147,6 +147,48 @@ def test_qty_purchased_nets_receipt_reversal_after_po_cancel(test_user):
         stock_batch__product=product,
         reason=MovementReason.RECEIPT_REVERSAL,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_qty_purchased_nets_void_after_manual_void(test_user):
+    product = Product.objects.create(
+        user=test_user,
+        name='Promo Cups',
+        sku='CUP-VOID',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=product,
+        initial_quantity=Decimal('20'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('2.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('20'),
+        reason=MovementReason.RECEIPT,
+    )
+    void_manual_stock_batch(user=test_user, stock_batch=stock)
+
+    mar = _aware(2026, 3, 15)
+    _set_movement_dates(
+        StockMovement.objects.filter(
+            user=test_user,
+            stock_batch=stock,
+            reason__in=[MovementReason.RECEIPT, MovementReason.VOID],
+        ),
+        mar,
+    )
+
+    row = get_products_with_financials(
+        test_user,
+        date_from=date(2026, 3, 1),
+        date_to=date(2026, 3, 31),
+    ).get(pk=product.pk)
+
+    assert row.qty_purchased == Decimal('0.000')
 
 
 @pytest.mark.django_db

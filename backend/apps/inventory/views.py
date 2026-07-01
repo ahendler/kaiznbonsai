@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
@@ -129,20 +130,24 @@ class StockViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     ordering = ["-created_at"]
 
-    def get_queryset(self):
+    def get_queryset(self, include_voided: bool | None = None):
         """
         Strictly isolate data: users can only see their own stock batches.
         Optionally filter by product ID. Voided batches are hidden unless
-        ?include_voided=true is passed.
+        ?include_voided=true is passed (or include_voided=True for internal lookups).
         """
         queryset = Stock.objects.filter(user=self.request.user).order_by('created_at')
         product_id = self.request.query_params.get('product')
         if product_id:
             queryset = queryset.filter(product_id=product_id)
-        include_voided = self.request.query_params.get('include_voided', '').lower() in ('true', '1')
+        if include_voided is None:
+            include_voided = self.request.query_params.get('include_voided', '').lower() in ('true', '1')
         if not include_voided:
             queryset = queryset.filter(voided_at__isnull=True)
         return queryset
+
+    def _get_stock_batch(self, *, include_voided: bool = False) -> Stock:
+        return get_object_or_404(self.get_queryset(include_voided=include_voided), pk=self.kwargs['pk'])
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -181,6 +186,7 @@ class StockViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
+        # Enforce auth and tenant scoping before returning 405 (ledger batches are never deleted).
         self.get_object()
         return Response(
             {
@@ -194,7 +200,7 @@ class StockViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def void(self, request, pk=None):
-        stock = self.get_object()
+        stock = self._get_stock_batch(include_voided=True)
         try:
             stock = void_manual_stock_batch(user=request.user, stock_batch=stock)
         except DjangoValidationError as exc:

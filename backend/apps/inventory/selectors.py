@@ -29,10 +29,14 @@ def _confirmed_sale_movements(user, *, date_from: date | None = None, date_to: d
 
 
 def _purchase_quantity_movements(user, *, date_from: date | None = None, date_to: date | None = None):
-    """Net qty purchased: sum RECEIPT and RECEIPT_REVERSAL deltas in the period."""
+    """Net qty purchased: RECEIPT, RECEIPT_REVERSAL, and VOID deltas in the period."""
     qs = StockMovement.objects.filter(
         user=user,
-        reason__in=[MovementReason.RECEIPT, MovementReason.RECEIPT_REVERSAL],
+        reason__in=[
+            MovementReason.RECEIPT,
+            MovementReason.RECEIPT_REVERSAL,
+            MovementReason.VOID,
+        ],
     )
     return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
 

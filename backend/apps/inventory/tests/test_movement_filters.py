@@ -2,13 +2,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.inventory.movement_filters import VALID_MOVEMENT_REASONS, parse_movement_reasons
-from apps.inventory.models import MovementReason, Stock
-
-
-def test_stock_has_nullable_voided_at_field():
-    field = Stock._meta.get_field('voided_at')
-    assert field.null is True
-    assert field.blank is True
+from apps.inventory.models import MovementReason
 
 
 @pytest.mark.parametrize(

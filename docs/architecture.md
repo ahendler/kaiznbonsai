@@ -75,7 +75,7 @@ Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SAL
 
 When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
 
-**Qty purchased / qty sold (dashboard):** net movement deltas in the period — `RECEIPT` + `RECEIPT_REVERSAL` for purchases; `SALE` + `RETURN` for sales. Cancellations within the window net to zero without removing ledger rows.
+**Qty purchased / qty sold (dashboard):** net movement deltas in the period — `RECEIPT` + `VOID` + `RECEIPT_REVERSAL` for purchases; `SALE` + `RETURN` for sales. Manual voids and order cancellations within the window net to zero without removing ledger rows.
 
 **Per-product percentages** (dashboard product table; API field `margin`):
 

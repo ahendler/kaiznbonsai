@@ -19,7 +19,7 @@ import {
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { IconTrash, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
+import { IconBan, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, voidStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
 import { invalidateFinancials } from '@/api/financials'
@@ -366,7 +366,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                       disabled
                                       style={{ pointerEvents: 'none' }}
                                     >
-                                      <IconTrash size={16} />
+                                      <IconBan size={16} />
                                     </ActionIcon>
                                   </Box>
                                 </Tooltip>
@@ -379,7 +379,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                       disabled
                                       style={{ pointerEvents: 'none' }}
                                     >
-                                      <IconTrash size={16} />
+                                      <IconBan size={16} />
                                     </ActionIcon>
                                   </Box>
                                 </Tooltip>
@@ -390,7 +390,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                     variant="subtle"
                                     onClick={() => setBatchToVoid(stock.id)}
                                   >
-                                    <IconTrash size={16} />
+                                    <IconBan size={16} />
                                   </ActionIcon>
                                 </Tooltip>
                               )}

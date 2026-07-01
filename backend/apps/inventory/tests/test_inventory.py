@@ -439,6 +439,20 @@ class TestStockOperations:
         ids_with_voided = [item['id'] for item in r_with_voided.data['results']]
         assert str(batch.id) in ids_with_voided
 
+    def test_void_another_users_stock_returns_404(self, client_a, user_b, product_b):
+        batch_b = make_stock(user_b, product_b, '10.000')
+        r = client_a.post(f'{STOCKS_URL}{batch_b.id}/void/')
+        assert r.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_revoid_batch_returns_400(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+        first = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert first.status_code == status.HTTP_200_OK
+
+        second = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert second.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already been voided' in second.data['detail'].lower()
+
     def test_void_po_linked_stock_returns_409(self, client_a, user_a, product_a):
         po = create_purchase_order(
             user_a,

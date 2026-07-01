@@ -54,10 +54,7 @@ export function getMovementReference(movement: StockMovementListItem): string {
     return 'Manual entry'
   }
   if (movement.reason === 'VOID') {
-    return 'Manual entry'
-  }
-  if (movement.reason === 'RECEIPT_REVERSAL') {
-    return 'Purchase order cancelled'
+    return 'Batch voided'
   }
   return '—'
 }

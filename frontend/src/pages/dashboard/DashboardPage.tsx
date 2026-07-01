@@ -247,8 +247,8 @@ export default function DashboardPage() {
                       <Table.Th className="w-0 whitespace-nowrap">
                         <MetricColumnHeader
                           label="Qty Purchased"
-                          formula="Receipts + receipt reversals"
-                          description="Net units received in this period. Cancelled purchase orders reduce this total."
+                          formula="Receipts − voids − receipt reversals"
+                          description="Net units received in this period. Manual voids and cancelled purchase orders reduce this total."
                         />
                       </Table.Th>
                       <Table.Th className="w-0 whitespace-nowrap">
