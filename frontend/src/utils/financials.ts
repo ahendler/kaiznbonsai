@@ -21,6 +21,13 @@ export function formatMarginPercent(margin: string | number): string {
   return `${Number(margin).toFixed(1)}%`
 }
 
+export function formatMarkupPercent(markup: string | number | null | undefined): string {
+  if (markup === null || markup === undefined || markup === '') {
+    return '—'
+  }
+  return `${Number(markup).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`
+}
+
 export function formatQuantity(qty: string | number): string {
   const n = Number(qty)
   if (Number.isInteger(n)) return String(n)

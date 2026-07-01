@@ -115,6 +115,7 @@ def test_product_financials_with_data(test_user, financial_data):
     assert prod1.cogs == Decimal('200.00')
     assert prod1.profit == Decimal('300.00')
     assert round(prod1.margin, 2) == Decimal('60.00')
+    assert round(prod1.markup_on_cost, 2) == Decimal('150.00')
     assert prod1.qty_purchased == Decimal('100.000')
     assert prod1.qty_sold == Decimal('20.000')
 
@@ -123,8 +124,42 @@ def test_product_financials_with_data(test_user, financial_data):
     assert prod2.cogs == Decimal('50.00')
     assert prod2.profit == Decimal('50.00')
     assert round(prod2.margin, 2) == Decimal('50.00')
+    assert round(prod2.markup_on_cost, 2) == Decimal('100.00')
     assert prod2.qty_purchased == Decimal('50.000')
     assert prod2.qty_sold == Decimal('10.000')
+
+
+@pytest.mark.django_db
+def test_product_financials_markup_null_when_no_cogs(test_user, financial_data):
+    test_user_product = Product.objects.create(
+        user=test_user,
+        name='Freebie',
+        sku='FREE-01',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=test_user_product,
+        initial_quantity=Decimal('10'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('0.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('10'),
+        reason=MovementReason.RECEIPT,
+    )
+    so = create_sales_order(
+        test_user,
+        [{'product_id': test_user_product.id, 'quantity': 5, 'unit_price': 20.00}],
+    )
+    confirm_sales_order(so)
+
+    product = get_products_with_financials(test_user).get(id=test_user_product.id)
+    assert product.revenue == Decimal('100.00')
+    assert product.cogs == Decimal('0.00')
+    assert product.markup_on_cost is None
 
 
 @pytest.mark.django_db

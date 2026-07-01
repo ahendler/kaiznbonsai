@@ -9,7 +9,7 @@ const ACTIVITY_FILTER_OPTIONS = [
 ] as const
 
 const MARGIN_BAND_OPTIONS = [
-  { value: 'negative', label: 'Negative margin' },
+  { value: 'negative', label: 'Negative gross margin' },
   { value: 'low', label: 'Low (< 20%)' },
   { value: 'medium', label: 'Medium (20–40%)' },
   { value: 'high', label: 'High (≥ 40%)' },
@@ -18,7 +18,7 @@ const MARGIN_BAND_OPTIONS = [
 const ORDERING_OPTIONS = [
   { value: '-revenue', label: 'Revenue (high → low)' },
   { value: '-profit', label: 'Profit (high → low)' },
-  { value: '-margin', label: 'Margin (high → low)' },
+  { value: '-margin', label: 'Gross margin (high → low)' },
   { value: 'name', label: 'Name (A → Z)' },
   { value: '-created_at', label: 'Recently added' },
 ] as const
@@ -61,8 +61,8 @@ export default function DashboardProductFilters({
         allowDeselect={false}
       />
       <Select
-        className="w-[200px]"
-        placeholder="All margins"
+        className="w-[220px]"
+        placeholder="All gross margins"
         clearable
         data={[...MARGIN_BAND_OPTIONS]}
         value={marginBand}

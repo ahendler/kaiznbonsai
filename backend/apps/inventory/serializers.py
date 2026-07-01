@@ -34,6 +34,9 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
     cogs = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     profit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    markup_on_cost = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True, allow_null=True,
+    )
     qty_purchased = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
     qty_sold = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
 
@@ -42,7 +45,7 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'sku', 'unit_of_measure',
             'qty_purchased', 'qty_sold',
-            'revenue', 'cogs', 'profit', 'margin',
+            'revenue', 'cogs', 'profit', 'margin', 'markup_on_cost',
         ]
 
 class StockSerializer(serializers.ModelSerializer):

@@ -154,10 +154,15 @@ def get_products_with_financials(
         profit=F('revenue') - F('cogs')
     ).annotate(
         margin=Case(
-            When(revenue__gt=0, then=(F('profit') / F('revenue')) * 100.0),
+            When(revenue__gt=0, then=(F('profit') / F('revenue')) * Value(Decimal('100'))),
             default=Value(Decimal('0.00')),
             output_field=DecimalField(max_digits=12, decimal_places=2),
-        )
+        ),
+        markup_on_cost=Case(
+            When(cogs__gt=0, then=(F('profit') / F('cogs')) * Value(Decimal('100'))),
+            default=Value(None),
+            output_field=DecimalField(max_digits=12, decimal_places=2, null=True),
+        ),
     )
 
     products = _apply_margin_band_filter(products, margin_band)

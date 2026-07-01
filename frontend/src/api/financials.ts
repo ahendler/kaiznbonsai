@@ -83,6 +83,7 @@ export interface ProductFinancials {
   cogs: string;
   profit: string;
   margin: string;
+  markup_on_cost: string | null;
 }
 
 export const listProductFinancials = async (
