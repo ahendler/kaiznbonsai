@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ['SECRET_KEY']
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 ALLOWED_HOSTS = ['*']
 
 
@@ -30,6 +31,7 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.inventory',
     'apps.orders',
+    'apps.assistant',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'

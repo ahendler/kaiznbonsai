@@ -11,3 +11,4 @@ django-cors-headers==4.7.0
 django-simple-history==3.7.0
 drf-spectacular==0.28.0
 gunicorn==22.0.0
+anthropic>=0.40.0
