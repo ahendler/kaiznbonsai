@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Drawer,
   Stack,
@@ -19,11 +19,12 @@ import {
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { IconTrash, IconEdit, IconCheck, IconX } from '@tabler/icons-react'
+import { IconTrash, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
 import { invalidateFinancials } from '@/api/financials'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
+import BatchActivityPanel from '@/components/inventory/BatchActivityPanel'
 
 interface StockFormValues {
   initial_quantity: string
@@ -80,6 +81,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch added successfully', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       invalidateFinancials(queryClient)
       form.reset()
     },
@@ -99,6 +102,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch removed successfully', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       invalidateFinancials(queryClient)
     },
     onError: (error) => {
@@ -108,6 +113,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
 
   // Edit State
   const [editingStockId, setEditingStockId] = useState<string | null>(null)
+  const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null)
   const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{
     lot_code: string
@@ -127,6 +133,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch updated', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
       invalidateFinancials(queryClient)
       setEditingStockId(null)
     },
@@ -136,6 +144,13 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
   })
 
   const stocks = data?.pages.flatMap((page) => page.results) ?? []
+
+  useEffect(() => {
+    if (!opened) {
+      setExpandedBatchId(null)
+      setEditingStockId(null)
+    }
+  }, [opened])
 
   return (
     <Drawer
@@ -218,6 +233,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                     const isConsumed = parseFloat(stock.current_quantity) < parseFloat(stock.initial_quantity)
                     
                     return (
+                      <>
                       <Table.Tr key={stock.id}>
                         <Table.Td>
                           {isEditing ? (
@@ -313,6 +329,19 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                             </Group>
                           ) : (
                             <Group gap="xs" wrap="nowrap">
+                              <Tooltip label={expandedBatchId === stock.id ? 'Hide activity' : 'Show activity'}>
+                                <ActionIcon
+                                  color={expandedBatchId === stock.id ? 'green' : 'gray'}
+                                  variant={expandedBatchId === stock.id ? 'light' : 'subtle'}
+                                  onClick={() => {
+                                    setExpandedBatchId((current) => (
+                                      current === stock.id ? null : stock.id
+                                    ))
+                                  }}
+                                >
+                                  <IconHistory size={16} />
+                                </ActionIcon>
+                              </Tooltip>
                               <ActionIcon
                                 color="blue"
                                 variant="subtle"
@@ -356,6 +385,14 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                           )}
                         </Table.Td>
                       </Table.Tr>
+                      {expandedBatchId === stock.id && (
+                        <Table.Tr>
+                          <Table.Td colSpan={6} p={0}>
+                            <BatchActivityPanel batchId={stock.id} />
+                          </Table.Td>
+                        </Table.Tr>
+                      )}
+                      </>
                     )
                   })
                 )}

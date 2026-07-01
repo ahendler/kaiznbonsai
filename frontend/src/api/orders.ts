@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import api from './client';
 import type { Product, PaginatedResponse } from './inventory';
 import { invalidateFinancials } from './financials';
@@ -115,7 +115,20 @@ const orderApi = {
     const response = await api.post(`/orders/sales-orders/${id}/cancel/`);
     return response.data;
   },
+
+  getPurchaseOrder: async (id: number): Promise<PurchaseOrder> => {
+    const response = await api.get(`/orders/purchase-orders/${id}/`);
+    return response.data;
+  },
+
+  getSalesOrder: async (id: number): Promise<SalesOrder> => {
+    const response = await api.get(`/orders/sales-orders/${id}/`);
+    return response.data;
+  },
 };
+
+export const getPurchaseOrder = orderApi.getPurchaseOrder;
+export const getSalesOrder = orderApi.getSalesOrder;
 
 // HOOKS
 export const usePurchaseOrders = () => {
@@ -210,5 +223,21 @@ export const useCancelSalesOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['stocks'] });
       invalidateFinancials(queryClient);
     },
+  });
+};
+
+export const usePurchaseOrder = (id: number | null) => {
+  return useQuery({
+    queryKey: ['purchase-order', id],
+    queryFn: () => orderApi.getPurchaseOrder(id!),
+    enabled: id !== null,
+  });
+};
+
+export const useSalesOrder = (id: number | null) => {
+  return useQuery({
+    queryKey: ['sales-order', id],
+    queryFn: () => orderApi.getSalesOrder(id!),
+    enabled: id !== null,
   });
 };

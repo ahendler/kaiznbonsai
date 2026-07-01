@@ -2,7 +2,9 @@ from rest_framework.exceptions import ValidationError
 
 VALID_MARGIN_BANDS = frozenset({'negative', 'low', 'medium', 'high'})
 VALID_ACTIVITY_FILTERS = frozenset({'all', 'movement', 'stale'})
-VALID_ORDERINGS = frozenset({'-created_at', '-revenue', '-profit', '-margin', 'name'})
+VALID_ORDERINGS = frozenset({
+    '-created_at', '-revenue', '-profit', '-margin', '-markup_on_cost', 'name',
+})
 
 
 def parse_search(value: str | None) -> str | None:

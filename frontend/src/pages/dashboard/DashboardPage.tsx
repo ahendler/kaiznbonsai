@@ -19,9 +19,11 @@ import {
 } from '@/api/financials'
 import { getApiErrorMessage } from '@/api/errors'
 import FinancialPeriodFilter from '@/components/dashboard/FinancialPeriodFilter'
+import MetricColumnHeader from '@/components/dashboard/MetricColumnHeader'
 import {
   formatCurrency,
   formatMarginPercent,
+  formatMarkupPercent,
   formatQuantity,
   getMarginColor,
   getMarginProgressValue,
@@ -150,7 +152,7 @@ export default function DashboardPage() {
             </Badge>
           )}
           <Badge size="xl" variant="light" color="blue">
-            Overall Margin: {formatMarginPercent(overall?.margin || 0)}
+            Overall Gross Margin: {formatMarginPercent(overall?.margin || 0)}
           </Badge>
         </Group>
       </Group>
@@ -230,7 +232,7 @@ export default function DashboardPage() {
                   </Text>
                   {hasActiveTableFilters && (
                     <Text c="dimmed" size="sm">
-                      Try adjusting search, margin band, or activity filters.
+                      Try adjusting search, gross margin band, or activity filters.
                     </Text>
                   )}
                 </Stack>
@@ -247,7 +249,20 @@ export default function DashboardPage() {
                       <Table.Th>Revenue</Table.Th>
                       <Table.Th>COGS</Table.Th>
                       <Table.Th>Profit</Table.Th>
-                      <Table.Th>Profit Margin</Table.Th>
+                      <Table.Th className="w-0 whitespace-nowrap">
+                        <MetricColumnHeader
+                          label="Markup on Cost"
+                          formula="(Profit ÷ COGS) × 100"
+                          description="Profit relative to cost of goods sold."
+                        />
+                      </Table.Th>
+                      <Table.Th className="w-0 whitespace-nowrap">
+                        <MetricColumnHeader
+                          label="Gross Margin"
+                          formula="(Profit ÷ Revenue) × 100"
+                          description="Share of revenue kept after COGS."
+                        />
+                      </Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -266,12 +281,23 @@ export default function DashboardPage() {
                           <Table.Td fw={600} c={Number(product.profit) < 0 ? 'red' : 'green'}>
                             {formatCurrency(product.profit)}
                           </Table.Td>
-                          <Table.Td>
-                            <Group justify="space-between" mb={4}>
-                              <Text size="sm" fw={500}>{formatMarginPercent(product.margin)}</Text>
-                            </Group>
+                          <Table.Td className="w-0 whitespace-nowrap">
+                            <Text
+                              size="sm"
+                              fw={500}
+                              c={
+                                product.markup_on_cost !== null && Number(product.markup_on_cost) < 0
+                                  ? 'red'
+                                  : undefined
+                              }
+                            >
+                              {formatMarkupPercent(product.markup_on_cost)}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td className="w-0 whitespace-nowrap">
+                            <Text size="sm" fw={500} mb={2}>{formatMarginPercent(product.margin)}</Text>
                             {progressValue !== null ? (
-                              <Progress value={progressValue} color={marginColor} size="sm" radius="xl" />
+                              <Progress value={progressValue} color={marginColor} size="xs" radius="xl" />
                             ) : (
                               <Text size="xs" c="red">Loss</Text>
                             )}

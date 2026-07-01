@@ -18,7 +18,8 @@ const MARGIN_BAND_OPTIONS = [
 const ORDERING_OPTIONS = [
   { value: '-revenue', label: 'Revenue (high → low)' },
   { value: '-profit', label: 'Profit (high → low)' },
-  { value: '-margin', label: 'Margin (high → low)' },
+  { value: '-margin', label: 'Gross margin (high → low)' },
+  { value: '-markup_on_cost', label: 'Markup (high → low)' },
   { value: 'name', label: 'Name (A → Z)' },
   { value: '-created_at', label: 'Recently added' },
 ] as const
@@ -61,8 +62,8 @@ export default function DashboardProductFilters({
         allowDeselect={false}
       />
       <Select
-        className="w-[200px]"
-        placeholder="All margins"
+        className="w-[220px]"
+        placeholder="All gross margins"
         clearable
         data={[...MARGIN_BAND_OPTIONS]}
         value={marginBand}

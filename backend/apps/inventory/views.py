@@ -4,16 +4,22 @@ from django.db import transaction
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import generics
 
-from apps.core.pagination import ProductFinancialsCursorPagination
+from apps.core.pagination import ProductFinancialsCursorPagination, StockMovementCursorPagination
 from apps.inventory.commands import record_movement
 from apps.inventory.models import MovementReason, Product, Stock, UnitType
-from apps.inventory.serializers import ProductSerializer, StockSerializer, ProductFinancialSerializer
+from apps.inventory.serializers import (
+    ProductSerializer,
+    StockSerializer,
+    ProductFinancialSerializer,
+    StockMovementListSerializer,
+)
 from apps.inventory.financial_period import parse_financial_period
 from apps.inventory.financial_product_filters import (
     parse_activity,
@@ -21,9 +27,36 @@ from apps.inventory.financial_product_filters import (
     parse_ordering,
     parse_search,
 )
-from apps.inventory.selectors import get_overall_financials, get_products_with_financials
+from apps.inventory.movement_filters import (
+    parse_movement_reasons,
+    parse_product_id,
+    parse_stock_batch_id,
+)
+from apps.inventory.selectors import (
+    get_overall_financials,
+    get_products_with_financials,
+    list_stock_movements,
+)
 
 VALID_UNIT_VALUES = {choice.value for choice in UnitType}
+
+
+def build_movement_queryset(request, *, stock_batch_id=None):
+    date_from, date_to = parse_financial_period(
+        request.query_params.get('from'),
+        request.query_params.get('to'),
+    )
+    return list_stock_movements(
+        request.user,
+        reasons=parse_movement_reasons(request.query_params.get('reason')),
+        product_id=parse_product_id(request.query_params.get('product')),
+        stock_batch_id=stock_batch_id if stock_batch_id is not None else parse_stock_batch_id(
+            request.query_params.get('stock_batch'),
+        ),
+        date_from=date_from,
+        date_to=date_to,
+        search=parse_search(request.query_params.get('search')),
+    )
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -151,6 +184,15 @@ class StockViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=True, methods=['get'])
+    def movements(self, request, pk=None):
+        stock = self.get_object()
+        queryset = build_movement_queryset(request, stock_batch_id=stock.id)
+        paginator = StockMovementCursorPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = StockMovementListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
 class OverallFinancialsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -185,3 +227,12 @@ class ProductFinancialsView(generics.ListAPIView):
             activity=parse_activity(self.request.query_params.get('activity')),
             ordering=parse_ordering(self.request.query_params.get('ordering')),
         )
+
+
+class StockMovementListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = StockMovementListSerializer
+    pagination_class = StockMovementCursorPagination
+
+    def get_queryset(self):
+        return build_movement_queryset(self.request)

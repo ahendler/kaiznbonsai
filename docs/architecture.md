@@ -33,7 +33,14 @@ Write-side inventory mutations go through `apps/inventory/commands.py::record_mo
 | `RETURN` | `cancel_sales_order` | Reverses exact `SALE` rows on the original batches |
 | `ADJUSTMENT` | `StockViewSet.perform_update` | Data-entry typo correction on unconsumed manual batches only |
 
-Movement rows are **not exposed in the API** — internal audit and COGS only.
+Movement rows power COGS, financial period aggregates, and the **Stock History** UI. They are exposed read-only via:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/inventory/movements/` | Tenant-wide ledger; cursor-paginated; filterable by `reason`, `product`, `stock_batch`, `from`/`to`, `search` |
+| `GET /api/v1/inventory/stocks/{id}/movements/` | Same serializer, scoped to one batch (stock drawer) |
+
+Writes still go only through `record_movement()` in commands — never via these list endpoints.
 
 ### Batch creation
 
@@ -62,6 +69,15 @@ COGS is the sum of `-delta × stock_batch.unit_cost` over `StockMovement` rows w
 Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SALE` movements (movement-based so multi-batch confirms and period filters stay aligned). Inventory value is `Sum(current_quantity × unit_cost)` on `Stock` — always a **current snapshot**, not period-scoped.
 
 When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
+
+**Per-product percentages** (dashboard product table; API field `margin`):
+
+| Metric | Formula | API field | Notes |
+|--------|---------|-----------|-------|
+| Gross margin | `(profit ÷ revenue) × 100` | `margin` | `0` when revenue is 0 |
+| Markup on cost | `(profit ÷ COGS) × 100` | `markup_on_cost` | `null` when COGS is 0 |
+
+Gross margin is share of revenue kept after COGS. Markup on cost is profit relative to cost — e.g. 150% markup means profit is 1.5× COGS. Margin-band filters and sort-by-`-margin` use gross margin only.
 
 **Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue, COGS, gross profit, margin, and per-product qty purchased/sold are scoped to `StockMovement.created_at` on `RECEIPT` and confirmed `SALE` rows. Inventory value is unchanged.
 

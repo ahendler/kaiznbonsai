@@ -21,3 +21,8 @@ class ProductFinancialsCursorPagination(CursorPagination):
     def get_ordering(self, request, queryset, view):
         field = parse_ordering(request.query_params.get('ordering'))
         return financial_ordering_with_tiebreaker(field)
+
+
+class StockMovementCursorPagination(CursorPagination):
+    page_size = 20
+    ordering = ('-created_at', '-id')

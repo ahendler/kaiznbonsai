@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.inventory.models import Product, Stock
+from apps.inventory.models import Product, Stock, StockMovement
 
 PRODUCT_NOT_FOUND = 'Product not found.'
 
@@ -33,7 +33,10 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
     revenue = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     cogs = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     profit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    margin = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    markup_on_cost = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True, allow_null=True,
+    )
     qty_purchased = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
     qty_sold = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
 
@@ -42,7 +45,7 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'sku', 'unit_of_measure',
             'qty_purchased', 'qty_sold',
-            'revenue', 'cogs', 'profit', 'margin',
+            'revenue', 'cogs', 'profit', 'margin', 'markup_on_cost',
         ]
 
 class StockSerializer(serializers.ModelSerializer):
@@ -126,3 +129,55 @@ class StockSerializer(serializers.ModelSerializer):
                     })
 
         return data
+
+
+class MovementProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sku', 'unit_of_measure']
+
+
+class MovementStockBatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Stock
+        fields = ['id', 'lot_code']
+
+
+class StockMovementListSerializer(serializers.ModelSerializer):
+    product = MovementProductSerializer(source='stock_batch.product', read_only=True)
+    stock_batch = MovementStockBatchSerializer(read_only=True)
+    sales_order = serializers.SerializerMethodField()
+    purchase_order = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id',
+            'created_at',
+            'reason',
+            'delta',
+            'product',
+            'stock_batch',
+            'sales_order',
+            'purchase_order',
+        ]
+
+    def get_sales_order(self, obj):
+        if not obj.sales_order_item_id:
+            return None
+        order = obj.sales_order_item.order
+        return {
+            'id': order.id,
+            'title': order.title or '',
+            'status': order.status,
+        }
+
+    def get_purchase_order(self, obj):
+        if not obj.purchase_order_item_id:
+            return None
+        order = obj.purchase_order_item.order
+        return {
+            'id': order.id,
+            'title': order.title or '',
+            'status': order.status,
+        }
