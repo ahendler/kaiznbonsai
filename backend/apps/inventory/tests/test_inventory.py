@@ -467,6 +467,70 @@ class TestStockOperations:
         batch.refresh_from_db()
         assert batch.voided_at is None
 
+    def test_patch_po_linked_lot_and_best_before_syncs_to_po_item(self, client_a, user_a, product_a):
+        from datetime import date
+
+        po = create_purchase_order(
+            user_a,
+            [{
+                'product_id': product_a.id,
+                'quantity': 10,
+                'unit_cost': 5.00,
+                'lot_code': 'LOT-ORIG',
+                'best_before': date(2026, 6, 1),
+            }],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+        po_item = batch.purchase_order_item
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'lot_code': 'LOT-UPDATED', 'best_before': '2026-12-31'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_200_OK
+        assert r.data['lot_code'] == 'LOT-UPDATED'
+        assert r.data['best_before'] == '2026-12-31'
+
+        po_item.refresh_from_db()
+        assert po_item.lot_code == 'LOT-UPDATED'
+        assert po_item.best_before == date(2026, 12, 31)
+
+    def test_patch_po_linked_quantity_returns_400(self, client_a, user_a, product_a):
+        po = create_purchase_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'initial_quantity': '20.000'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'initial_quantity' in r.data
+        assert 'purchase order' in r.data['initial_quantity'][0].lower()
+
+    def test_patch_po_linked_unit_cost_returns_400(self, client_a, user_a, product_a):
+        po = create_purchase_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'unit_cost': '9.99'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'unit_cost' in r.data
+        assert 'purchase order' in r.data['unit_cost'][0].lower()
+
     def test_void_partially_sold_batch_returns_409(self, client_a, user_a, product_a):
         batch = make_stock(user_a, product_a, '100.000')
         so = create_sales_order(

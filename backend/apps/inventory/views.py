@@ -183,7 +183,23 @@ class StockViewSet(viewsets.ModelViewSet):
             )
             stock.initial_quantity += delta
 
-        serializer.save()
+        stock = serializer.save()
+        self._sync_po_item_batch_metadata(stock, validated)
+
+    def _sync_po_item_batch_metadata(self, stock: Stock, validated: dict) -> None:
+        """Keep PO line lot/best-before in sync when batch metadata is edited."""
+        if not stock.purchase_order_item_id:
+            return
+        po_item = stock.purchase_order_item
+        update_fields = []
+        if 'lot_code' in validated and po_item.lot_code != stock.lot_code:
+            po_item.lot_code = stock.lot_code
+            update_fields.append('lot_code')
+        if 'best_before' in validated and po_item.best_before != stock.best_before:
+            po_item.best_before = stock.best_before
+            update_fields.append('best_before')
+        if update_fields:
+            po_item.save(update_fields=update_fields)
 
     def destroy(self, request, *args, **kwargs):
         # Enforce auth and tenant scoping before returning 405 (ledger batches are never deleted).

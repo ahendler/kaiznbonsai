@@ -126,6 +126,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     unit_cost: '',
     best_before: '',
   })
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({})
   
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string, payload: StockUpdatePayload }) => updateStock(id, payload),
@@ -135,11 +136,18 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       invalidateFinancials(queryClient)
       setEditingStockId(null)
+      setEditFieldErrors({})
     },
     onError: (error) => {
-      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to update batch.'), color: 'red' })
+      const formErrors = getFormErrorsFromApi(getAxiosResponseData(error))
+      if (formErrors) {
+        setEditFieldErrors(formErrors)
+      } else {
+        notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to update batch.'), color: 'red' })
+      }
     }
   })
 
@@ -149,6 +157,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     if (!opened) {
       setExpandedBatchId(null)
       setEditingStockId(null)
+      setEditFieldErrors({})
     }
   }, [opened])
 
@@ -231,6 +240,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                   stocks.map((stock) => {
                     const isEditing = editingStockId === stock.id
                     const isConsumed = parseFloat(stock.current_quantity) < parseFloat(stock.initial_quantity)
+                    const isPoLinked = stock.is_po_linked
+                    const poQtyCostTooltip = 'This batch was received via a purchase order. Quantity and cost cannot be manually edited.'
                     
                     return (
                       <>
@@ -240,7 +251,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                             <TextInput
                               size="xs"
                               value={editValues.lot_code}
-                              onChange={(e) => setEditValues({ ...editValues, lot_code: e.currentTarget.value })}
+                              onChange={(e) => {
+                                setEditFieldErrors((prev) => ({ ...prev, lot_code: '' }))
+                                setEditValues({ ...editValues, lot_code: e.currentTarget.value })
+                              }}
+                              error={editFieldErrors.lot_code}
                               styles={{ input: { width: 100 } }}
                             />
                           ) : stock.lot_code ? (
@@ -249,15 +264,33 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                         </Table.Td>
                         <Table.Td>
                           {isEditing ? (
-                            <NumberInput
-                              size="xs"
-                              value={editValues.initial_quantity}
-                              onChange={(val) => setEditValues({ ...editValues, initial_quantity: typeof val === 'number' ? val : parseFloat(val) || 0 })}
-                              disabled={isConsumed}
-                              hideControls
-                              styles={{ input: { width: 80 } }}
-                              min={0}
-                            />
+                            isPoLinked ? (
+                              <Tooltip label={poQtyCostTooltip}>
+                                <Box>
+                                  <NumberInput
+                                    size="xs"
+                                    value={editValues.initial_quantity}
+                                    disabled
+                                    hideControls
+                                    styles={{ input: { width: 80 } }}
+                                  />
+                                </Box>
+                              </Tooltip>
+                            ) : (
+                              <NumberInput
+                                size="xs"
+                                value={editValues.initial_quantity}
+                                onChange={(val) => {
+                                  setEditFieldErrors((prev) => ({ ...prev, initial_quantity: '' }))
+                                  setEditValues({ ...editValues, initial_quantity: typeof val === 'number' ? val : parseFloat(val) || 0 })
+                                }}
+                                disabled={isConsumed}
+                                error={editFieldErrors.initial_quantity}
+                                hideControls
+                                styles={{ input: { width: 80 } }}
+                                min={0}
+                              />
+                            )
                           ) : (
                             <Text>{parseFloat(stock.initial_quantity)}</Text>
                           )}
@@ -269,15 +302,34 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                         </Table.Td>
                         <Table.Td>
                           {isEditing ? (
-                            <NumberInput
-                              size="xs"
-                              value={editValues.unit_cost}
-                              onChange={(val) => setEditValues({ ...editValues, unit_cost: typeof val === 'number' ? val : parseFloat(val) || 0 })}
-                              decimalScale={2}
-                              hideControls
-                              styles={{ input: { width: 80 } }}
-                              min={0}
-                            />
+                            isPoLinked ? (
+                              <Tooltip label={poQtyCostTooltip}>
+                                <Box>
+                                  <NumberInput
+                                    size="xs"
+                                    value={editValues.unit_cost}
+                                    disabled
+                                    decimalScale={2}
+                                    hideControls
+                                    styles={{ input: { width: 80 } }}
+                                  />
+                                </Box>
+                              </Tooltip>
+                            ) : (
+                              <NumberInput
+                                size="xs"
+                                value={editValues.unit_cost}
+                                onChange={(val) => {
+                                  setEditFieldErrors((prev) => ({ ...prev, unit_cost: '' }))
+                                  setEditValues({ ...editValues, unit_cost: typeof val === 'number' ? val : parseFloat(val) || 0 })
+                                }}
+                                error={editFieldErrors.unit_cost}
+                                decimalScale={2}
+                                hideControls
+                                styles={{ input: { width: 80 } }}
+                                min={0}
+                              />
+                            )
                           ) : (
                             <Text>${parseFloat(stock.unit_cost).toFixed(2)}</Text>
                           )}
@@ -288,7 +340,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               type="date"
                               size="xs"
                               value={editValues.best_before}
-                              onChange={(e) => setEditValues({ ...editValues, best_before: e.currentTarget.value })}
+                              onChange={(e) => {
+                                setEditFieldErrors((prev) => ({ ...prev, best_before: '' }))
+                                setEditValues({ ...editValues, best_before: e.currentTarget.value })
+                              }}
+                              error={editFieldErrors.best_before}
                               styles={{ input: { width: 130 } }}
                             />
                           ) : (
@@ -303,18 +359,18 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                 variant="light"
                                 loading={updateMutation.isPending}
                                 onClick={() => {
-                                  if (editValues.initial_quantity !== '' && editValues.unit_cost !== '') {
-                                    const payload: StockUpdatePayload = {
-                                      lot_code: editValues.lot_code || undefined,
-                                      initial_quantity: editValues.initial_quantity.toString(),
-                                      unit_cost: editValues.unit_cost.toString(),
-                                      best_before: editValues.best_before || null,
-                                    }
+                                  const payload: StockUpdatePayload = {
+                                    lot_code: editValues.lot_code || undefined,
+                                    best_before: editValues.best_before || null,
+                                  }
+                                  if (!isPoLinked && editValues.initial_quantity !== '' && editValues.unit_cost !== '') {
+                                    payload.initial_quantity = editValues.initial_quantity.toString()
+                                    payload.unit_cost = editValues.unit_cost.toString()
                                     if (!isConsumed) {
                                       payload.current_quantity = editValues.initial_quantity.toString()
                                     }
-                                    updateMutation.mutate({ id: stock.id, payload })
                                   }
+                                  updateMutation.mutate({ id: stock.id, payload })
                                 }}
                               >
                                 <IconCheck size={16} />
@@ -322,7 +378,10 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               <ActionIcon
                                 color="gray"
                                 variant="light"
-                                onClick={() => setEditingStockId(null)}
+                                onClick={() => {
+                                  setEditingStockId(null)
+                                  setEditFieldErrors({})
+                                }}
                               >
                                 <IconX size={16} />
                               </ActionIcon>
@@ -347,6 +406,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                 variant="subtle"
                                 onClick={() => {
                                   setEditingStockId(stock.id)
+                                  setEditFieldErrors({})
                                   setEditValues({
                                     lot_code: stock.lot_code || '',
                                     initial_quantity: parseFloat(stock.initial_quantity),
