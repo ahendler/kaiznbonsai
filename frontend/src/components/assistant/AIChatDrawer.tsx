@@ -17,10 +17,9 @@ import { sendChatMessage, type ChatMessage } from '@/api/assistant'
 import ChatMessageBubble from './ChatMessage'
 
 const SUGGESTION_PROMPTS = [
-  "What's my gross margin this month?",
-  'Which products have low margins?',
-  'What stock do I have on hand?',
-  'Show me recent sales activity',
+  'How does my gross margin in the running month compare to all-time?',
+  "What draft purchase orders do I have open, and what's the total cost of inventory still waiting to be received?",
+  'Walk me through everything that happened with Espresso Beans — House Blend last month — purchases, sales, and net stock change.',
 ]
 
 // Keep at most this many messages in history sent to the backend.
@@ -145,10 +144,26 @@ export default function AIChatDrawer({ opened, onClose, messages, setMessages }:
                   key={prompt}
                   variant="default"
                   size="compact-sm"
+                  fullWidth
                   onClick={() => send(prompt)}
                   disabled={isPending}
-                  justify="start"
-                  styles={{ label: { whiteSpace: 'normal', textAlign: 'left' } }}
+                  justify="flex-start"
+                  styles={{
+                    root: {
+                      height: 'auto',
+                      minHeight: 'var(--button-height-compact-sm)',
+                      paddingBlock: 'var(--mantine-spacing-xs)',
+                      alignItems: 'flex-start',
+                    },
+                    inner: {
+                      justifyContent: 'flex-start',
+                    },
+                    label: {
+                      whiteSpace: 'normal',
+                      textAlign: 'left',
+                      lineHeight: 1.45,
+                    },
+                  }}
                 >
                   {prompt}
                 </Button>
