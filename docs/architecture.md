@@ -59,11 +59,13 @@ PO confirm and manual create both use this pattern. Never set `current_quantity`
 
 COGS is the sum of `-delta × stock_batch.unit_cost` over `StockMovement` rows where `reason=SALE` and the linked sales order is `CONFIRMED`.
 
-Revenue is `quantity × unit_price` on `SalesOrderItem` for `CONFIRMED` orders. Inventory value is `Sum(current_quantity × unit_cost)` on `Stock`.
+Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SALE` movements (movement-based so multi-batch confirms and period filters stay aligned). Inventory value is `Sum(current_quantity × unit_cost)` on `Stock` — always a **current snapshot**, not period-scoped.
 
 When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
 
-Implemented in `apps/inventory/selectors.py`.
+**Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue, COGS, gross profit, margin, and per-product qty purchased/sold are scoped to `StockMovement.created_at` on `RECEIPT` and confirmed `SALE` rows. Inventory value is unchanged.
+
+Implemented in `apps/inventory/selectors.py` and `apps/inventory/financial_period.py`.
 
 ### Stock allocation on sales order confirm
 

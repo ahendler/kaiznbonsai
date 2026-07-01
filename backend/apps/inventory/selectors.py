@@ -1,29 +1,60 @@
+from datetime import date
 from decimal import Decimal
 
 from django.db.models import Sum, F, DecimalField, OuterRef, Subquery, Value, Case, When
 from django.db.models.functions import Coalesce
 
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
-from apps.orders.models import OrderStatus, SalesOrderItem
+from apps.orders.models import OrderStatus
 
 
-def get_overall_financials(user) -> dict:
-    revenue_agg = SalesOrderItem.objects.filter(
-        order__user=user,
-        order__status=OrderStatus.CONFIRMED,
-    ).aggregate(
+def _movement_date_filter(qs, *, date_from: date | None, date_to: date | None):
+    if date_from is None:
+        return qs
+    return qs.filter(
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+    )
+
+
+def _confirmed_sale_movements(user, *, date_from: date | None = None, date_to: date | None = None):
+    qs = StockMovement.objects.filter(
+        user=user,
+        reason=MovementReason.SALE,
+        sales_order_item__order__status=OrderStatus.CONFIRMED,
+        sales_order_item__isnull=False,
+    )
+    return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
+
+
+def _receipt_movements(user, *, date_from: date | None = None, date_to: date | None = None):
+    qs = StockMovement.objects.filter(
+        user=user,
+        reason=MovementReason.RECEIPT,
+    )
+    return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
+
+
+def get_overall_financials(
+    user,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    sale_movements = _confirmed_sale_movements(user, date_from=date_from, date_to=date_to)
+
+    revenue_agg = sale_movements.aggregate(
         total_revenue=Coalesce(
-            Sum(F('quantity') * F('unit_price'), output_field=DecimalField()),
+            Sum(
+                -F('delta') * F('sales_order_item__unit_price'),
+                output_field=DecimalField(),
+            ),
             Value(Decimal('0.00'), output_field=DecimalField()),
         )
     )
     total_revenue = revenue_agg['total_revenue']
 
-    cogs_agg = StockMovement.objects.filter(
-        user=user,
-        reason=MovementReason.SALE,
-        sales_order_item__order__status=OrderStatus.CONFIRMED,
-    ).aggregate(
+    cogs_agg = sale_movements.aggregate(
         total_cogs=Coalesce(
             Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField()),
             Value(Decimal('0.00'), output_field=DecimalField()),
@@ -51,36 +82,38 @@ def get_overall_financials(user) -> dict:
     }
 
 
-def get_products_with_financials(user):
-    revenue_sq = SalesOrderItem.objects.filter(
-        product=OuterRef('pk'),
-        order__status=OrderStatus.CONFIRMED,
-    ).values('product').annotate(
-        total=Sum(F('quantity') * F('unit_price'), output_field=DecimalField())
+def get_products_with_financials(
+    user,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+):
+    sale_movements = _confirmed_sale_movements(user, date_from=date_from, date_to=date_to)
+    receipt_movements = _receipt_movements(user, date_from=date_from, date_to=date_to)
+
+    revenue_sq = sale_movements.filter(
+        stock_batch__product=OuterRef('pk'),
+    ).values('stock_batch__product').annotate(
+        total=Sum(
+            -F('delta') * F('sales_order_item__unit_price'),
+            output_field=DecimalField(),
+        )
     ).values('total')
 
-    cogs_sq = StockMovement.objects.filter(
+    cogs_sq = sale_movements.filter(
         stock_batch__product=OuterRef('pk'),
-        user=user,
-        reason=MovementReason.SALE,
-        sales_order_item__order__status=OrderStatus.CONFIRMED,
     ).values('stock_batch__product').annotate(
         total=Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField())
     ).values('total')
 
-    qty_sold_sq = StockMovement.objects.filter(
+    qty_sold_sq = sale_movements.filter(
         stock_batch__product=OuterRef('pk'),
-        user=user,
-        reason=MovementReason.SALE,
-        sales_order_item__order__status=OrderStatus.CONFIRMED,
     ).values('stock_batch__product').annotate(
         total=Sum(-F('delta'), output_field=DecimalField())
     ).values('total')
 
-    qty_purchased_sq = StockMovement.objects.filter(
+    qty_purchased_sq = receipt_movements.filter(
         stock_batch__product=OuterRef('pk'),
-        user=user,
-        reason=MovementReason.RECEIPT,
     ).values('stock_batch__product').annotate(
         total=Sum(F('delta'), output_field=DecimalField())
     ).values('total')
