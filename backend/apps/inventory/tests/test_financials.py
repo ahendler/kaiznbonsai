@@ -772,12 +772,60 @@ def test_product_financials_api_ordering_by_revenue(auth_client, financial_data)
 
 
 @pytest.mark.django_db
+def test_product_financials_api_ordering_by_cogs(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-cogs'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    cogs = [float(p['cogs']) for p in results]
+    assert cogs == sorted(cogs, reverse=True)
+
+
+@pytest.mark.django_db
 def test_product_financials_api_ordering_by_markup(auth_client, financial_data):
     res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-markup_on_cost'})
     assert res.status_code == status.HTTP_200_OK
     results = res.json()['results']
     markups = [float(p['markup_on_cost']) for p in results]
     assert markups == sorted(markups, reverse=True)
+
+
+@pytest.mark.django_db
+def test_product_financials_api_ordering_by_markup_nulls_last(auth_client, test_user, financial_data):
+    from apps.inventory.commands import record_movement
+    from apps.inventory.models import MovementReason, Stock
+
+    freebie = Product.objects.create(
+        user=test_user,
+        name='Freebie',
+        sku='FREE-01',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=freebie,
+        initial_quantity=Decimal('10'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('0.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('10'),
+        reason=MovementReason.RECEIPT,
+    )
+    so = create_sales_order(
+        test_user,
+        [{'product_id': freebie.id, 'quantity': 5, 'unit_price': 20.00}],
+    )
+    confirm_sales_order(so)
+
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-markup_on_cost'})
+    assert res.status_code == status.HTTP_200_OK
+    markups = [p['markup_on_cost'] for p in res.json()['results']]
+    null_index = next((i for i, m in enumerate(markups) if m is None), len(markups))
+    non_null = [float(m) for m in markups[:null_index]]
+    assert non_null == sorted(non_null, reverse=True)
+    assert all(m is None for m in markups[null_index:])
 
 
 @pytest.mark.django_db

@@ -73,8 +73,14 @@ export function resolveFinancialPeriod(preset: FinancialPeriodPreset): Financial
         from: formatPeriodDate(today.startOf('year')),
         to: formatPeriodDate(today),
       }
-    case 'custom':
-      return { preset, from: null, to: null }
+    case 'custom': {
+      const lastMonth = today.subtract(1, 'month')
+      return {
+        preset,
+        from: formatPeriodDate(lastMonth.startOf('month')),
+        to: formatPeriodDate(lastMonth.endOf('month')),
+      }
+    }
     default:
       return DEFAULT_FINANCIAL_PERIOD
   }

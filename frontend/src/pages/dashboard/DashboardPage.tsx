@@ -146,7 +146,7 @@ export default function DashboardPage() {
         </div>
         <Group gap="sm" wrap="wrap" align="center">
           <FinancialPeriodFilter value={period} onChange={setPeriod} />
-          {periodLabel && (
+          {periodLabel && period.preset !== 'custom' && (
             <Badge size="lg" variant="light" color="gray">
               {periodLabel}
             </Badge>
@@ -259,7 +259,13 @@ export default function DashboardPage() {
                         />
                       </Table.Th>
                       <Table.Th>Revenue</Table.Th>
-                      <Table.Th>COGS</Table.Th>
+                      <Table.Th>
+                        <MetricColumnHeader
+                          label="COGS"
+                          formula="Σ (sale qty × batch unit cost)"
+                          description="Cost of inventory sold in this period."
+                        />
+                      </Table.Th>
                       <Table.Th>Profit</Table.Th>
                       <Table.Th className="w-0 whitespace-nowrap">
                         <MetricColumnHeader

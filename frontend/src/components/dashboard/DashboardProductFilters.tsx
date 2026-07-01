@@ -18,6 +18,7 @@ const MARGIN_BAND_OPTIONS = [
 const ORDERING_OPTIONS = [
   { value: '-revenue', label: 'Revenue (high → low)' },
   { value: '-profit', label: 'Profit (high → low)' },
+  { value: '-cogs', label: 'COGS (high → low)' },
   { value: '-margin', label: 'Gross margin (high → low)' },
   { value: '-markup_on_cost', label: 'Markup (high → low)' },
   { value: 'name', label: 'Name (A → Z)' },

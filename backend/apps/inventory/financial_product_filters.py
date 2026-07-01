@@ -3,7 +3,8 @@ from rest_framework.exceptions import ValidationError
 VALID_MARGIN_BANDS = frozenset({'negative', 'low', 'medium', 'high'})
 VALID_ACTIVITY_FILTERS = frozenset({'all', 'movement', 'stale'})
 VALID_ORDERINGS = frozenset({
-    '-created_at', '-revenue', '-profit', '-margin', '-markup_on_cost', 'name',
+    '-created_at', '-revenue', '-profit', '-margin', '-markup_on_cost',
+    '-cogs', 'cogs', 'name',
 })
 
 
