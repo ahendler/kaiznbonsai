@@ -14,9 +14,11 @@ import {
   Tooltip,
   CopyButton,
   Modal,
-  Box,
   TextInput,
   Select,
+  Popover,
+  Checkbox,
+  Input,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -25,14 +27,15 @@ import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hook
 import {
   IconPlus,
   IconEdit,
-  IconTrash,
   IconBoxSeam,
   IconCopy,
   IconCheck,
   IconSearch,
+  IconChevronDown,
 } from '@tabler/icons-react'
 import { listProducts, deleteProduct } from '@/api/inventory'
 import type { Product, ProductListFilters } from '@/api/inventory'
+import { getApiErrorMessage } from '@/api/errors'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
 import StockDrawer from '@/components/inventory/StockDrawer'
 
@@ -44,6 +47,18 @@ const UNIT_FILTER_OPTIONS = [
   { value: 'UNIT', label: 'Unit' },
 ] as const
 
+type UnitOfMeasure = Product['unit_of_measure']
+
+function unitFilterButtonLabel(selected: UnitOfMeasure[]): string {
+  if (selected.length === 0) {
+    return 'All units'
+  }
+  if (selected.length === 1) {
+    return UNIT_FILTER_OPTIONS.find((option) => option.value === selected[0])?.label ?? selected[0]
+  }
+  return `${selected.length} units`
+}
+
 type StockFilter = 'all' | 'in_stock' | 'out_of_stock'
 
 const STOCK_FILTER_OPTIONS = [
@@ -52,10 +67,18 @@ const STOCK_FILTER_OPTIONS = [
   { value: 'out_of_stock', label: 'Out of stock only' },
 ] as const
 
-const CopyAction = ({ value }: { value: string }) => (
+const CopyAction = ({
+  value,
+  copyLabel = 'Copy',
+  copiedLabel = 'Copied',
+}: {
+  value: string
+  copyLabel?: string
+  copiedLabel?: string
+}) => (
   <CopyButton value={value} timeout={2000}>
     {({ copied, copy }) => (
-      <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow position="right">
+      <Tooltip label={copied ? copiedLabel : copyLabel} withArrow position="right">
         <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} size="xs">
           {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         </ActionIcon>
@@ -112,13 +135,13 @@ const TruncatedTextWithTooltip = ({
 
 export default function ProductListPage() {
   const [search, setSearch] = useState('')
-  const [unitFilter, setUnitFilter] = useState<Product['unit_of_measure'] | null>(null)
+  const [unitFilters, setUnitFilters] = useState<UnitOfMeasure[]>([])
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [debouncedSearch] = useDebouncedValue(search, 300)
 
   const listFilters: ProductListFilters = {
     search: debouncedSearch,
-    ...(unitFilter ? { unit_of_measure: unitFilter } : {}),
+    ...(unitFilters.length > 0 ? { unit_of_measure: unitFilters } : {}),
     ...(stockFilter === 'in_stock' ? { in_stock: true } : {}),
     ...(stockFilter === 'out_of_stock' ? { in_stock: false } : {}),
   }
@@ -158,11 +181,15 @@ export default function ProductListPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setProductToDelete(null)
     },
-    onError: () => {
+    onError: (error) => {
       notifications.show({
-        title: 'Error',
-        message: 'Failed to delete product. It may have existing stock batches.',
+        title: 'Cannot delete product',
+        message: getApiErrorMessage(
+          error,
+          'Failed to delete product. Stock batch history may still exist for traceability.',
+        ),
         color: 'red',
+        autoClose: 8000,
       })
     },
   })
@@ -189,7 +216,7 @@ export default function ProductListPage() {
   }, [entry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const products = data?.pages.flatMap((page) => page.results) ?? []
-  const hasActiveFilters = Boolean(debouncedSearch || unitFilter || stockFilter !== 'all')
+  const hasActiveFilters = Boolean(debouncedSearch || unitFilters.length > 0 || stockFilter !== 'all')
 
   return (
     <Container size="xl" p={0}>
@@ -212,14 +239,48 @@ export default function ProductListPage() {
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
-        <Select
-          className="w-[180px]"
-          placeholder="All units"
-          clearable
-          data={[...UNIT_FILTER_OPTIONS]}
-          value={unitFilter}
-          onChange={(value) => setUnitFilter(value as Product['unit_of_measure'] | null)}
-        />
+        <Popover width={220} position="bottom-start" withArrow shadow="md">
+          <Popover.Target>
+            <Input
+              component="button"
+              type="button"
+              pointer
+              className="w-[180px]"
+              rightSection={<IconChevronDown size={16} stroke={1.5} />}
+              rightSectionPointerEvents="none"
+            >
+              <Text size="sm" truncate>
+                {unitFilterButtonLabel(unitFilters)}
+              </Text>
+            </Input>
+          </Popover.Target>
+          <Popover.Dropdown>
+            <Checkbox.Group
+              value={unitFilters}
+              onChange={(value) => setUnitFilters(value as UnitOfMeasure[])}
+            >
+              <Stack gap="xs">
+                {UNIT_FILTER_OPTIONS.map((option) => (
+                  <Checkbox
+                    key={option.value}
+                    value={option.value}
+                    label={option.label}
+                  />
+                ))}
+              </Stack>
+            </Checkbox.Group>
+            {unitFilters.length > 0 && (
+              <Button
+                variant="subtle"
+                size="compact-xs"
+                mt="sm"
+                onClick={() => setUnitFilters([])}
+              >
+                Clear units
+              </Button>
+            )}
+          </Popover.Dropdown>
+        </Popover>
         <Select
           className="w-[200px]"
           data={[...STOCK_FILTER_OPTIONS]}
@@ -291,7 +352,7 @@ export default function ProductListPage() {
                           />
                         )}
                       </div>
-                      <CopyAction value={product.name} />
+                      <CopyAction value={product.name} copyLabel="Copy product name" />
                     </Group>
                   </Table.Td>
                   <Table.Td className="max-w-[200px]">
@@ -336,30 +397,6 @@ export default function ProductListPage() {
                       >
                         <IconEdit size={16} />
                       </ActionIcon>
-                      {parseFloat(product.total_stock || '0') > 0 ? (
-                        <Tooltip label="Cannot delete a product with active stock batches. Remove all stock first.">
-                          <Box display="inline-block">
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              disabled
-                              className="pointer-events-none"
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Box>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip label="Delete product">
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={() => setProductToDelete(product)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -382,6 +419,13 @@ export default function ProductListPage() {
         opened={modalOpened}
         onClose={closeModal}
         product={editingProduct}
+        onRequestDelete={(product) => {
+          closeModal()
+          setProductToDelete(product)
+        }}
+        onViewStock={(product) => {
+          setStockProduct(product)
+        }}
       />
 
       <Modal
@@ -402,24 +446,41 @@ export default function ProductListPage() {
           <Text size="sm" c="dimmed">
             This action cannot be undone.
           </Text>
-          {parseFloat(productToDelete?.total_stock || '0') > 0 && (
+          {productToDelete?.has_stock_batches && (
             <Text size="sm" c="red" mt="sm">
-              You cannot delete a product that currently has stock. Please remove all stock batches first.
+              This product still has stock batches (including fully consumed). Batch history is
+              kept for traceability — use View Stock to review before deleting.
             </Text>
           )}
         </Stack>
-        <Group justify="flex-end">
+        <Group justify="space-between">
+          {productToDelete?.has_stock_batches ? (
+            <Button
+              variant="light"
+              color="green"
+              onClick={() => {
+                setStockProduct(productToDelete)
+                setProductToDelete(null)
+              }}
+            >
+              View stock batches
+            </Button>
+          ) : (
+            <span />
+          )}
+          <Group>
           <Button variant="default" onClick={() => setProductToDelete(null)} disabled={deleteMutation.isPending}>
             Cancel
           </Button>
           <Button
             color="red"
             loading={deleteMutation.isPending}
-            disabled={parseFloat(productToDelete?.total_stock || '0') > 0}
+            disabled={productToDelete?.has_stock_batches}
             onClick={() => productToDelete && deleteMutation.mutate(productToDelete.id)}
           >
             Delete
           </Button>
+          </Group>
         </Group>
       </Modal>
 
@@ -428,6 +489,7 @@ export default function ProductListPage() {
         onClose={() => setStockProduct(null)}
         productId={stockProduct?.id || ''}
         productName={stockProduct?.name || ''}
+        hasVoidedBatches={stockProduct?.has_voided_batches ?? false}
       />
     </Container>
   )

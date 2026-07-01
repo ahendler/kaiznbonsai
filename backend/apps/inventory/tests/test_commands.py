@@ -5,8 +5,9 @@ from django.core.exceptions import ValidationError
 from django.db.models import Sum
 
 from apps.accounts.models import User
-from apps.inventory.commands import record_movement
+from apps.inventory.commands import record_movement, void_manual_stock_batch
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
+from apps.orders.commands import confirm_purchase_order, create_purchase_order
 
 
 @pytest.fixture
@@ -142,3 +143,83 @@ class TestRecordMovement:
         stock_batch.refresh_from_db()
         total_delta = stock_batch.movements.aggregate(total=Sum('delta'))['total']
         assert total_delta == stock_batch.current_quantity == Decimal('80.000')
+
+
+def _fund_manual_batch(stock_batch, user, quantity='25.000'):
+    record_movement(
+        user=user,
+        stock_batch=stock_batch,
+        delta=Decimal(quantity),
+        reason=MovementReason.RECEIPT,
+    )
+    stock_batch.refresh_from_db()
+
+
+@pytest.mark.django_db
+class TestVoidManualStockBatch:
+    def test_void_appends_movement_and_sets_voided_at(self, user, stock_batch):
+        _fund_manual_batch(stock_batch, user)
+        movement_count_before = stock_batch.movements.count()
+
+        result = void_manual_stock_batch(user=user, stock_batch=stock_batch)
+
+        result.refresh_from_db()
+        assert result.voided_at is not None
+        assert result.current_quantity == Decimal('0')
+        assert result.movements.count() == movement_count_before + 1
+
+        void_movement = result.movements.get(reason=MovementReason.VOID)
+        assert void_movement.delta == Decimal('-25.000')
+        assert not result.movements.filter(reason=MovementReason.ADJUSTMENT).exists()
+
+    def test_void_po_linked_batch_raises(self, user, product):
+        po = create_purchase_order(
+            user,
+            [{'product_id': product.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        with pytest.raises(ValidationError, match='purchase order'):
+            void_manual_stock_batch(user=user, stock_batch=batch)
+
+        batch.refresh_from_db()
+        assert batch.voided_at is None
+        assert not batch.movements.filter(reason=MovementReason.VOID).exists()
+
+    def test_void_batch_with_sale_history_raises(self, user, stock_batch):
+        _fund_manual_batch(stock_batch, user, quantity='100.000')
+        record_movement(
+            user=user,
+            stock_batch=stock_batch,
+            delta=Decimal('-10.000'),
+            reason=MovementReason.SALE,
+        )
+        stock_batch.refresh_from_db()
+
+        with pytest.raises(ValidationError, match='sale'):
+            void_manual_stock_batch(user=user, stock_batch=stock_batch)
+
+        stock_batch.refresh_from_db()
+        assert stock_batch.voided_at is None
+        assert not stock_batch.movements.filter(reason=MovementReason.VOID).exists()
+
+    def test_void_already_voided_batch_raises(self, user, stock_batch):
+        _fund_manual_batch(stock_batch, user)
+        void_manual_stock_batch(user=user, stock_batch=stock_batch)
+
+        with pytest.raises(ValidationError, match='already been voided'):
+            void_manual_stock_batch(user=user, stock_batch=stock_batch)
+
+    def test_void_batch_with_no_remaining_quantity_raises(self, user, stock_batch):
+        with pytest.raises(ValidationError, match='no remaining quantity'):
+            void_manual_stock_batch(user=user, stock_batch=stock_batch)
+
+    def test_void_cross_user_raises(self, user, other_user, stock_batch):
+        _fund_manual_batch(stock_batch, user)
+
+        with pytest.raises(ValidationError, match='not found'):
+            void_manual_stock_batch(user=other_user, stock_batch=stock_batch)
+
+        stock_batch.refresh_from_db()
+        assert stock_batch.voided_at is None

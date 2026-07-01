@@ -17,6 +17,8 @@ export interface Product {
   description: string
   unit_of_measure: 'KG' | 'G' | 'L' | 'ML' | 'UNIT'
   total_stock: string // Decimal returned as string from DRF
+  has_stock_batches: boolean
+  has_voided_batches: boolean
   created_at: string
   updated_at: string
 }
@@ -32,7 +34,7 @@ export type ProductUpdatePayload = Partial<ProductCreatePayload>
 
 export interface ProductListFilters {
   search?: string
-  unit_of_measure?: Product['unit_of_measure']
+  unit_of_measure?: Product['unit_of_measure'][]
   in_stock?: boolean
 }
 
@@ -44,6 +46,8 @@ export interface Stock {
   current_quantity: string // Decimal
   unit_cost: string // Decimal
   best_before: string | null // Date (YYYY-MM-DD)
+  voided_at: string | null
+  is_po_linked: boolean
   created_at: string
   updated_at: string
 }
@@ -81,8 +85,8 @@ export const listProducts = async (
   if (search) {
     params.search = search
   }
-  if (filters.unit_of_measure) {
-    params.unit_of_measure = filters.unit_of_measure
+  if (filters.unit_of_measure?.length) {
+    params.unit_of_measure = filters.unit_of_measure.join(',')
   }
   if (filters.in_stock === true) {
     params.in_stock = 'true'
@@ -111,10 +115,21 @@ export const deleteProduct = async (id: string): Promise<void> => {
 // Stocks API
 // ----------------------------------------------------------------------------
 
-export const listStocks = async (productId: string, cursor: string | null = null): Promise<PaginatedResponse<Stock>> => {
+export interface StockListOptions {
+  include_voided?: boolean
+}
+
+export const listStocks = async (
+  productId: string,
+  cursor: string | null = null,
+  options: StockListOptions = {},
+): Promise<PaginatedResponse<Stock>> => {
   const params: Record<string, string> = { product: productId }
   if (cursor) {
     params.cursor = cursor
+  }
+  if (options.include_voided) {
+    params.include_voided = 'true'
   }
   const response = await api.get('/inventory/stocks/', { params })
   return response.data
@@ -130,6 +145,7 @@ export const updateStock = async (id: string, payload: StockUpdatePayload): Prom
   return response.data
 }
 
-export const deleteStock = async (id: string): Promise<void> => {
-  await api.delete(`/inventory/stocks/${id}/`)
+export const voidStock = async (id: string): Promise<Stock> => {
+  const response = await api.post(`/inventory/stocks/${id}/void/`)
+  return response.data
 }

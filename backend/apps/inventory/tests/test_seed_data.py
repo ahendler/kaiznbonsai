@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.inventory.models import Product, StockMovement, UnitType
+from apps.inventory.models import MovementReason, Product, Stock, StockMovement, UnitType
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
 from apps.orders.models import OrderStatus, PurchaseOrder, SalesOrder
 
@@ -87,3 +87,13 @@ def test_generate_seed_data_command():
     )
     assert this_month['revenue'] > Decimal('0')
     assert last_month['revenue'] > Decimal('0')
+
+    assert StockMovement.objects.filter(
+        user=demo_user,
+        reason=MovementReason.VOID,
+    ).exists()
+    assert StockMovement.objects.filter(
+        user=demo_user,
+        reason=MovementReason.RECEIPT_REVERSAL,
+    ).exists()
+    assert Stock.objects.filter(user=demo_user, voided_at__isnull=False).exists()

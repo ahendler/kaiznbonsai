@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem, OrderStatus
 from apps.inventory.models import Product, Stock, MovementReason, StockMovement
 from apps.inventory.commands import record_movement
@@ -83,17 +84,18 @@ def confirm_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
 def cancel_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
     """
     Transitions PO to CANCELLED.
-    If CONFIRMED, it attempts to delete the generated Stock batches.
+    If CONFIRMED, voids each linked stock batch via RECEIPT_REVERSAL (ledger rows kept).
     If any Stock batch has been partially or fully consumed, it raises an error.
     """
     if order.status == OrderStatus.CANCELLED:
         raise ValidationError(ORDER_ALREADY_CANCELLED)
 
     if order.status == OrderStatus.CONFIRMED:
-        # Fetch all stock batches created by this order
         stock_batches = Stock.objects.filter(purchase_order_item__order=order)
-        
-        for batch in stock_batches:
+        batch_ids = list(stock_batches.values_list('pk', flat=True))
+        list(Stock.objects.filter(id__in=batch_ids).select_for_update())
+
+        for batch in Stock.objects.filter(id__in=batch_ids).select_related('purchase_order_item'):
             if batch.movements.filter(reason=MovementReason.SALE).exists():
                 raise ValidationError(
                     "Cannot cancel: one or more stock batches have been used in a sale."
@@ -103,9 +105,16 @@ def cancel_purchase_order(order: PurchaseOrder) -> PurchaseOrder:
                     "Cannot cancel a confirmed order because some of the received stock "
                     "has already been consumed or sold."
                 )
-        
-        # If untouched, safely delete the physical stock
-        stock_batches.delete()
+
+            record_movement(
+                user=order.user,
+                stock_batch=batch,
+                delta=-batch.current_quantity,
+                reason=MovementReason.RECEIPT_REVERSAL,
+                purchase_order_item=batch.purchase_order_item,
+            )
+            batch.voided_at = timezone.now()
+            batch.save(update_fields=['voided_at', 'updated_at'])
 
     order.status = OrderStatus.CANCELLED
     order.save(update_fields=['status', 'updated_at'])

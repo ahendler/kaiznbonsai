@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
-from .models import OrderStatus
+from apps.inventory.models import StockMovement
 from .serializers import PurchaseOrderSerializer, SalesOrderSerializer, ConfirmSalesOrderSerializer
 from .selectors import get_purchase_orders_for_user, get_sales_orders_for_user
 from .commands import (
@@ -53,9 +53,13 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         order = self.get_object()
-        if order.status == OrderStatus.CONFIRMED:
+        if StockMovement.objects.filter(purchase_order_item__order=order).exists():
             return Response(
-                {"detail": "Cannot delete a confirmed purchase order. Cancel it first."},
+                {
+                    'detail': (
+                        'Cannot delete a purchase order that has stock movement history.'
+                    ),
+                },
                 status=status.HTTP_409_CONFLICT,
             )
         return super().destroy(request, *args, **kwargs)
@@ -105,9 +109,13 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         order = self.get_object()
-        if order.status == OrderStatus.CONFIRMED:
+        if StockMovement.objects.filter(sales_order_item__order=order).exists():
             return Response(
-                {"detail": "Cannot delete a confirmed sales order. Cancel it first."},
+                {
+                    'detail': (
+                        'Cannot delete a sales order that has stock movement history.'
+                    ),
+                },
                 status=status.HTTP_409_CONFLICT,
             )
         return super().destroy(request, *args, **kwargs)

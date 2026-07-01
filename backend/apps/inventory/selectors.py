@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db.models import Sum, F, DecimalField, OuterRef, Subquery, Value, Case, When, Q
 from django.db.models.functions import Coalesce
 
-from apps.core.pagination import financial_ordering_with_tiebreaker
+from apps.core.pagination import financial_sql_ordering
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.orders.models import OrderStatus
 
@@ -28,10 +28,25 @@ def _confirmed_sale_movements(user, *, date_from: date | None = None, date_to: d
     return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
 
 
-def _receipt_movements(user, *, date_from: date | None = None, date_to: date | None = None):
+def _purchase_quantity_movements(user, *, date_from: date | None = None, date_to: date | None = None):
+    """Net qty purchased: RECEIPT, RECEIPT_REVERSAL, and VOID deltas in the period."""
     qs = StockMovement.objects.filter(
         user=user,
-        reason=MovementReason.RECEIPT,
+        reason__in=[
+            MovementReason.RECEIPT,
+            MovementReason.RECEIPT_REVERSAL,
+            MovementReason.VOID,
+        ],
+    )
+    return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
+
+
+def _sale_quantity_movements(user, *, date_from: date | None = None, date_to: date | None = None):
+    """Net qty sold: sum SALE and RETURN deltas in the period (cancellations net out)."""
+    qs = StockMovement.objects.filter(
+        user=user,
+        reason__in=[MovementReason.SALE, MovementReason.RETURN],
+        sales_order_item__isnull=False,
     )
     return _movement_date_filter(qs, date_from=date_from, date_to=date_to)
 
@@ -114,7 +129,12 @@ def get_products_with_financials(
         products = products.filter(Q(name__icontains=search) | Q(sku__icontains=search))
 
     sale_movements = _confirmed_sale_movements(user, date_from=date_from, date_to=date_to)
-    receipt_movements = _receipt_movements(user, date_from=date_from, date_to=date_to)
+    purchase_quantity_movements = _purchase_quantity_movements(
+        user, date_from=date_from, date_to=date_to,
+    )
+    sale_quantity_movements = _sale_quantity_movements(
+        user, date_from=date_from, date_to=date_to,
+    )
 
     revenue_sq = sale_movements.filter(
         stock_batch__product=OuterRef('pk'),
@@ -131,13 +151,13 @@ def get_products_with_financials(
         total=Sum(-F('delta') * F('stock_batch__unit_cost'), output_field=DecimalField())
     ).values('total')
 
-    qty_sold_sq = sale_movements.filter(
+    qty_sold_sq = sale_quantity_movements.filter(
         stock_batch__product=OuterRef('pk'),
     ).values('stock_batch__product').annotate(
         total=Sum(-F('delta'), output_field=DecimalField())
     ).values('total')
 
-    qty_purchased_sq = receipt_movements.filter(
+    qty_purchased_sq = purchase_quantity_movements.filter(
         stock_batch__product=OuterRef('pk'),
     ).values('stock_batch__product').annotate(
         total=Sum(F('delta'), output_field=DecimalField())
@@ -172,7 +192,7 @@ def get_products_with_financials(
     elif activity == 'stale':
         products = products.filter(qty_purchased=0, qty_sold=0)
 
-    return products.order_by(*financial_ordering_with_tiebreaker(ordering))
+    return products.order_by(*financial_sql_ordering(ordering))
 
 
 def list_stock_movements(

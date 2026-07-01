@@ -15,16 +15,20 @@ import {
   Tooltip,
   Box,
   Modal,
+  Switch,
 } from '@mantine/core'
 import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import { IconTrash, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
-import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
+import { IconBan, IconEdit, IconCheck, IconX, IconHistory, IconInfoCircle } from '@tabler/icons-react'
+import { listStocks, createStock, updateStock, voidStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
 import { invalidateFinancials } from '@/api/financials'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 import BatchActivityPanel from '@/components/inventory/BatchActivityPanel'
+
+const VOIDED_BATCH_TOOLTIP =
+  'A voided batch was removed from available stock. The batch and its history are kept for traceability.'
 
 interface StockFormValues {
   initial_quantity: string
@@ -38,14 +42,25 @@ interface StockDrawerProps {
   onClose: () => void
   productId: string
   productName: string
+  hasVoidedBatches?: boolean
 }
 
-export default function StockDrawer({ opened, onClose, productId, productName }: StockDrawerProps) {
+export default function StockDrawer({
+  opened,
+  onClose,
+  productId,
+  productName,
+  hasVoidedBatches = false,
+}: StockDrawerProps) {
   const queryClient = useQueryClient()
-  
+  const [showVoided, setShowVoided] = useState(false)
+  const [voidedToggleVisible, setVoidedToggleVisible] = useState(hasVoidedBatches)
+
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['stocks', productId],
-    queryFn: ({ pageParam }) => listStocks(productId, pageParam as string | null),
+    queryKey: ['stocks', productId, showVoided ? 'with-voided' : 'active'],
+    queryFn: ({ pageParam }) => listStocks(productId, pageParam as string | null, {
+      include_voided: showVoided,
+    }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null
@@ -96,10 +111,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     }
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteStock(id),
+  const voidMutation = useMutation({
+    mutationFn: (id: string) => voidStock(id),
     onSuccess: () => {
-      notifications.show({ title: 'Success', message: 'Batch removed successfully', color: 'green' })
+      notifications.show({ title: 'Success', message: 'Batch voided successfully', color: 'green' })
+      setVoidedToggleVisible(true)
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
@@ -107,14 +123,14 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       invalidateFinancials(queryClient)
     },
     onError: (error) => {
-      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to delete batch.'), color: 'red' })
+      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to void batch.'), color: 'red' })
     }
   })
 
   // Edit State
   const [editingStockId, setEditingStockId] = useState<string | null>(null)
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null)
-  const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
+  const [batchToVoid, setBatchToVoid] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{
     lot_code: string
     initial_quantity: number | ''
@@ -126,6 +142,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     unit_cost: '',
     best_before: '',
   })
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({})
   
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string, payload: StockUpdatePayload }) => updateStock(id, payload),
@@ -135,11 +152,18 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
       invalidateFinancials(queryClient)
       setEditingStockId(null)
+      setEditFieldErrors({})
     },
     onError: (error) => {
-      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to update batch.'), color: 'red' })
+      const formErrors = getFormErrorsFromApi(getAxiosResponseData(error))
+      if (formErrors) {
+        setEditFieldErrors(formErrors)
+      } else {
+        notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to update batch.'), color: 'red' })
+      }
     }
   })
 
@@ -149,8 +173,12 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     if (!opened) {
       setExpandedBatchId(null)
       setEditingStockId(null)
+      setEditFieldErrors({})
+      setShowVoided(false)
+      return
     }
-  }, [opened])
+    setVoidedToggleVisible(hasVoidedBatches)
+  }, [opened, hasVoidedBatches, productId])
 
   return (
     <Drawer
@@ -207,7 +235,29 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
         </Paper>
 
         <div>
-          <Text fw={500} mb="sm">Current Batches</Text>
+          <Group justify="space-between" align="center" mb="sm">
+            <Text fw={500}>Current Batches</Text>
+            {voidedToggleVisible && (
+              <Group gap={4} wrap="nowrap">
+                <Switch
+                  label="Show voided batches"
+                  checked={showVoided}
+                  onChange={(event) => setShowVoided(event.currentTarget.checked)}
+                  size="sm"
+                />
+                <Tooltip label={VOIDED_BATCH_TOOLTIP} multiline maw={300}>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    aria-label="About voided batches"
+                  >
+                    <IconInfoCircle size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            )}
+          </Group>
           <div style={{ overflowX: 'auto' }}>
             <Table striped highlightOnHover>
               <Table.Thead>
@@ -224,40 +274,80 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                 {stocks.length === 0 ? (
                   <Table.Tr>
                     <Table.Td colSpan={6}>
-                      <Text c="dimmed" ta="center">No stock batches found.</Text>
+                      <Text c="dimmed" ta="center">
+                        {voidedToggleVisible && !showVoided
+                          ? 'No active batches. Enable “Show voided batches” to review removed stock.'
+                          : 'No stock batches found.'}
+                      </Text>
                     </Table.Td>
                   </Table.Tr>
                 ) : (
                   stocks.map((stock) => {
                     const isEditing = editingStockId === stock.id
+                    const isVoided = Boolean(stock.voided_at)
                     const isConsumed = parseFloat(stock.current_quantity) < parseFloat(stock.initial_quantity)
+                    const isPoLinked = stock.is_po_linked
+                    const poQtyCostTooltip = 'This batch was received via a purchase order. Quantity and cost cannot be manually edited.'
                     
                     return (
                       <>
-                      <Table.Tr key={stock.id}>
+                      <Table.Tr key={stock.id} style={{ opacity: isVoided ? 0.65 : undefined }}>
                         <Table.Td>
+                          <Group gap="xs" wrap="nowrap">
                           {isEditing ? (
                             <TextInput
                               size="xs"
                               value={editValues.lot_code}
-                              onChange={(e) => setEditValues({ ...editValues, lot_code: e.currentTarget.value })}
+                              onChange={(e) => {
+                                setEditFieldErrors((prev) => ({ ...prev, lot_code: '' }))
+                                setEditValues({ ...editValues, lot_code: e.currentTarget.value })
+                              }}
+                              error={editFieldErrors.lot_code}
                               styles={{ input: { width: 100 } }}
                             />
                           ) : stock.lot_code ? (
                             <Badge variant="outline" color="gray">{stock.lot_code}</Badge>
-                          ) : '-'}
+                          ) : (
+                            <Text>-</Text>
+                          )}
+                          {isVoided && (
+                            <Tooltip label={VOIDED_BATCH_TOOLTIP} multiline maw={300}>
+                              <Badge variant="light" color="gray" size="xs" style={{ cursor: 'help' }}>
+                                Voided
+                              </Badge>
+                            </Tooltip>
+                          )}
+                          </Group>
                         </Table.Td>
                         <Table.Td>
                           {isEditing ? (
-                            <NumberInput
-                              size="xs"
-                              value={editValues.initial_quantity}
-                              onChange={(val) => setEditValues({ ...editValues, initial_quantity: typeof val === 'number' ? val : parseFloat(val) || 0 })}
-                              disabled={isConsumed}
-                              hideControls
-                              styles={{ input: { width: 80 } }}
-                              min={0}
-                            />
+                            isPoLinked ? (
+                              <Tooltip label={poQtyCostTooltip}>
+                                <Box>
+                                  <NumberInput
+                                    size="xs"
+                                    value={editValues.initial_quantity}
+                                    disabled
+                                    hideControls
+                                    styles={{ input: { width: 80 } }}
+                                  />
+                                </Box>
+                              </Tooltip>
+                            ) : (
+                              <NumberInput
+                                size="xs"
+                                value={editValues.initial_quantity}
+                                onChange={(val) => {
+                                  setEditFieldErrors((prev) => ({ ...prev, initial_quantity: '' }))
+                                  setEditValues({ ...editValues, initial_quantity: typeof val === 'number' ? val : parseFloat(val) || 0 })
+                                }}
+                                disabled={isConsumed}
+                                error={editFieldErrors.initial_quantity}
+                                hideControls
+                                styles={{ input: { width: 80 } }}
+                                min={0}
+                              />
+                            )
                           ) : (
                             <Text>{parseFloat(stock.initial_quantity)}</Text>
                           )}
@@ -269,15 +359,34 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                         </Table.Td>
                         <Table.Td>
                           {isEditing ? (
-                            <NumberInput
-                              size="xs"
-                              value={editValues.unit_cost}
-                              onChange={(val) => setEditValues({ ...editValues, unit_cost: typeof val === 'number' ? val : parseFloat(val) || 0 })}
-                              decimalScale={2}
-                              hideControls
-                              styles={{ input: { width: 80 } }}
-                              min={0}
-                            />
+                            isPoLinked ? (
+                              <Tooltip label={poQtyCostTooltip}>
+                                <Box>
+                                  <NumberInput
+                                    size="xs"
+                                    value={editValues.unit_cost}
+                                    disabled
+                                    decimalScale={2}
+                                    hideControls
+                                    styles={{ input: { width: 80 } }}
+                                  />
+                                </Box>
+                              </Tooltip>
+                            ) : (
+                              <NumberInput
+                                size="xs"
+                                value={editValues.unit_cost}
+                                onChange={(val) => {
+                                  setEditFieldErrors((prev) => ({ ...prev, unit_cost: '' }))
+                                  setEditValues({ ...editValues, unit_cost: typeof val === 'number' ? val : parseFloat(val) || 0 })
+                                }}
+                                error={editFieldErrors.unit_cost}
+                                decimalScale={2}
+                                hideControls
+                                styles={{ input: { width: 80 } }}
+                                min={0}
+                              />
+                            )
                           ) : (
                             <Text>${parseFloat(stock.unit_cost).toFixed(2)}</Text>
                           )}
@@ -288,7 +397,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               type="date"
                               size="xs"
                               value={editValues.best_before}
-                              onChange={(e) => setEditValues({ ...editValues, best_before: e.currentTarget.value })}
+                              onChange={(e) => {
+                                setEditFieldErrors((prev) => ({ ...prev, best_before: '' }))
+                                setEditValues({ ...editValues, best_before: e.currentTarget.value })
+                              }}
+                              error={editFieldErrors.best_before}
                               styles={{ input: { width: 130 } }}
                             />
                           ) : (
@@ -296,25 +409,41 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                           )}
                         </Table.Td>
                         <Table.Td>
-                          {isEditing ? (
+                          {isVoided ? (
+                            <Group gap="xs" wrap="nowrap">
+                              <Tooltip label={expandedBatchId === stock.id ? 'Hide activity' : 'Show activity'}>
+                                <ActionIcon
+                                  color={expandedBatchId === stock.id ? 'green' : 'gray'}
+                                  variant={expandedBatchId === stock.id ? 'light' : 'subtle'}
+                                  onClick={() => {
+                                    setExpandedBatchId((current) => (
+                                      current === stock.id ? null : stock.id
+                                    ))
+                                  }}
+                                >
+                                  <IconHistory size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          ) : isEditing ? (
                             <Group gap="xs" wrap="nowrap">
                               <ActionIcon
                                 color="green"
                                 variant="light"
                                 loading={updateMutation.isPending}
                                 onClick={() => {
-                                  if (editValues.initial_quantity !== '' && editValues.unit_cost !== '') {
-                                    const payload: StockUpdatePayload = {
-                                      lot_code: editValues.lot_code || undefined,
-                                      initial_quantity: editValues.initial_quantity.toString(),
-                                      unit_cost: editValues.unit_cost.toString(),
-                                      best_before: editValues.best_before || null,
-                                    }
+                                  const payload: StockUpdatePayload = {
+                                    lot_code: editValues.lot_code || undefined,
+                                    best_before: editValues.best_before || null,
+                                  }
+                                  if (!isPoLinked && editValues.initial_quantity !== '' && editValues.unit_cost !== '') {
+                                    payload.initial_quantity = editValues.initial_quantity.toString()
+                                    payload.unit_cost = editValues.unit_cost.toString()
                                     if (!isConsumed) {
                                       payload.current_quantity = editValues.initial_quantity.toString()
                                     }
-                                    updateMutation.mutate({ id: stock.id, payload })
                                   }
+                                  updateMutation.mutate({ id: stock.id, payload })
                                 }}
                               >
                                 <IconCheck size={16} />
@@ -322,7 +451,10 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               <ActionIcon
                                 color="gray"
                                 variant="light"
-                                onClick={() => setEditingStockId(null)}
+                                onClick={() => {
+                                  setEditingStockId(null)
+                                  setEditFieldErrors({})
+                                }}
                               >
                                 <IconX size={16} />
                               </ActionIcon>
@@ -347,6 +479,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                 variant="subtle"
                                 onClick={() => {
                                   setEditingStockId(stock.id)
+                                  setEditFieldErrors({})
                                   setEditValues({
                                     lot_code: stock.lot_code || '',
                                     initial_quantity: parseFloat(stock.initial_quantity),
@@ -357,8 +490,8 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               >
                                 <IconEdit size={16} />
                               </ActionIcon>
-                              {isConsumed ? (
-                                <Tooltip label="Cannot delete a partially or fully consumed batch">
+                              {stock.is_po_linked ? (
+                                <Tooltip label="Cancel the purchase order to reverse receipt.">
                                   <Box display="inline-block">
                                     <ActionIcon
                                       color="gray"
@@ -366,18 +499,31 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                       disabled
                                       style={{ pointerEvents: 'none' }}
                                     >
-                                      <IconTrash size={16} />
+                                      <IconBan size={16} />
+                                    </ActionIcon>
+                                  </Box>
+                                </Tooltip>
+                              ) : isConsumed ? (
+                                <Tooltip label="Cannot void a partially or fully consumed batch">
+                                  <Box display="inline-block">
+                                    <ActionIcon
+                                      color="gray"
+                                      variant="subtle"
+                                      disabled
+                                      style={{ pointerEvents: 'none' }}
+                                    >
+                                      <IconBan size={16} />
                                     </ActionIcon>
                                   </Box>
                                 </Tooltip>
                               ) : (
-                                <Tooltip label="Remove batch">
+                                <Tooltip label="Void batch">
                                   <ActionIcon
                                     color="red"
                                     variant="subtle"
-                                    onClick={() => setBatchToDelete(stock.id)}
+                                    onClick={() => setBatchToVoid(stock.id)}
                                   >
-                                    <IconTrash size={16} />
+                                    <IconBan size={16} />
                                   </ActionIcon>
                                 </Tooltip>
                               )}
@@ -410,27 +556,29 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       </Stack>
 
       <Modal
-        opened={!!batchToDelete}
-        onClose={() => setBatchToDelete(null)}
-        title="Remove stock batch"
+        opened={!!batchToVoid}
+        onClose={() => setBatchToVoid(null)}
+        title="Void stock batch"
         centered
       >
         <Stack gap="md">
-          <Text size="sm">Are you sure you want to remove this batch? This cannot be undone.</Text>
+          <Text size="sm">
+            This voids the batch and records the removal in stock history. It cannot be undone.
+          </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setBatchToDelete(null)}>Cancel</Button>
+            <Button variant="default" onClick={() => setBatchToVoid(null)}>Cancel</Button>
             <Button
               color="red"
-              loading={deleteMutation.isPending}
+              loading={voidMutation.isPending}
               onClick={() => {
-                if (batchToDelete) {
-                  deleteMutation.mutate(batchToDelete, {
-                    onSuccess: () => setBatchToDelete(null),
+                if (batchToVoid) {
+                  voidMutation.mutate(batchToVoid, {
+                    onSuccess: () => setBatchToVoid(null),
                   })
                 }
               }}
             >
-              Remove batch
+              Void batch
             </Button>
           </Group>
         </Stack>

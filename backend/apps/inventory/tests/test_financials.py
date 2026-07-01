@@ -6,10 +6,17 @@ from django.utils import timezone
 from rest_framework import status
 
 from apps.accounts.models import User
-from apps.inventory.commands import record_movement
+from apps.inventory.commands import record_movement, void_manual_stock_batch
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.inventory.selectors import get_overall_financials, get_products_with_financials
-from apps.orders.commands import cancel_sales_order, confirm_sales_order, create_sales_order
+from apps.orders.commands import (
+    cancel_purchase_order,
+    cancel_sales_order,
+    confirm_purchase_order,
+    confirm_sales_order,
+    create_purchase_order,
+    create_sales_order,
+)
 
 
 def _aware(year, month, day):
@@ -103,6 +110,132 @@ def test_overall_financials_with_data(test_user, financial_data):
     assert data['gross_profit'] == Decimal('350.00')
     assert data['margin'] == Decimal('58.33')
     assert data['inventory_value'] == Decimal('1000.00')
+
+
+@pytest.mark.django_db
+def test_qty_purchased_nets_receipt_reversal_after_po_cancel(test_user):
+    product = Product.objects.create(
+        user=test_user,
+        name='Oat Milk',
+        sku='OAT-CAN',
+        unit_of_measure='L',
+    )
+    po = create_purchase_order(
+        test_user,
+        [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.00}],
+    )
+    confirm_purchase_order(po)
+    cancel_purchase_order(po)
+
+    mar = _aware(2026, 3, 15)
+    _set_movement_dates(
+        StockMovement.objects.filter(
+            user=test_user,
+            reason__in=[MovementReason.RECEIPT, MovementReason.RECEIPT_REVERSAL],
+        ),
+        mar,
+    )
+
+    row = get_products_with_financials(
+        test_user,
+        date_from=date(2026, 3, 1),
+        date_to=date(2026, 3, 31),
+    ).get(pk=product.pk)
+
+    assert row.qty_purchased == Decimal('0.000')
+    assert StockMovement.objects.filter(
+        stock_batch__product=product,
+        reason=MovementReason.RECEIPT_REVERSAL,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_qty_purchased_nets_void_after_manual_void(test_user):
+    product = Product.objects.create(
+        user=test_user,
+        name='Promo Cups',
+        sku='CUP-VOID',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=product,
+        initial_quantity=Decimal('20'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('2.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('20'),
+        reason=MovementReason.RECEIPT,
+    )
+    void_manual_stock_batch(user=test_user, stock_batch=stock)
+
+    mar = _aware(2026, 3, 15)
+    _set_movement_dates(
+        StockMovement.objects.filter(
+            user=test_user,
+            stock_batch=stock,
+            reason__in=[MovementReason.RECEIPT, MovementReason.VOID],
+        ),
+        mar,
+    )
+
+    row = get_products_with_financials(
+        test_user,
+        date_from=date(2026, 3, 1),
+        date_to=date(2026, 3, 31),
+    ).get(pk=product.pk)
+
+    assert row.qty_purchased == Decimal('0.000')
+
+
+@pytest.mark.django_db
+def test_qty_sold_nets_return_after_so_cancel(test_user):
+    product = Product.objects.create(
+        user=test_user,
+        name='Espresso',
+        sku='ESP-CAN',
+        unit_of_measure='KG',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=product,
+        initial_quantity=Decimal('100'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('10.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('100'),
+        reason=MovementReason.RECEIPT,
+    )
+
+    so = create_sales_order(
+        test_user,
+        [{'product_id': product.id, 'quantity': 40, 'unit_price': 20.00}],
+    )
+    confirm_sales_order(so)
+    cancel_sales_order(so)
+
+    mar = _aware(2026, 3, 15)
+    _set_movement_dates(
+        StockMovement.objects.filter(
+            user=test_user,
+            reason__in=[MovementReason.SALE, MovementReason.RETURN],
+        ),
+        mar,
+    )
+
+    row = get_products_with_financials(
+        test_user,
+        date_from=date(2026, 3, 1),
+        date_to=date(2026, 3, 31),
+    ).get(pk=product.pk)
+
+    assert row.qty_sold == Decimal('0.000')
 
 
 @pytest.mark.django_db
@@ -326,6 +459,14 @@ def test_cancelled_sales_excluded_from_period(test_user, financial_data):
 
     cancel_sales_order(so1)
     cancel_sales_order(so2)
+
+    _set_movement_dates(
+        StockMovement.objects.filter(
+            user=test_user,
+            reason__in=[MovementReason.SALE, MovementReason.RETURN],
+        ),
+        mar,
+    )
 
     data = get_overall_financials(test_user, **march)
     assert data['revenue'] == Decimal('0.00')
@@ -631,12 +772,60 @@ def test_product_financials_api_ordering_by_revenue(auth_client, financial_data)
 
 
 @pytest.mark.django_db
+def test_product_financials_api_ordering_by_cogs(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-cogs'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    cogs = [float(p['cogs']) for p in results]
+    assert cogs == sorted(cogs, reverse=True)
+
+
+@pytest.mark.django_db
 def test_product_financials_api_ordering_by_markup(auth_client, financial_data):
     res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-markup_on_cost'})
     assert res.status_code == status.HTTP_200_OK
     results = res.json()['results']
     markups = [float(p['markup_on_cost']) for p in results]
     assert markups == sorted(markups, reverse=True)
+
+
+@pytest.mark.django_db
+def test_product_financials_api_ordering_by_markup_nulls_last(auth_client, test_user, financial_data):
+    from apps.inventory.commands import record_movement
+    from apps.inventory.models import MovementReason, Stock
+
+    freebie = Product.objects.create(
+        user=test_user,
+        name='Freebie',
+        sku='FREE-01',
+        unit_of_measure='UNIT',
+    )
+    stock = Stock.objects.create(
+        user=test_user,
+        product=freebie,
+        initial_quantity=Decimal('10'),
+        current_quantity=Decimal('0'),
+        unit_cost=Decimal('0.00'),
+    )
+    record_movement(
+        user=test_user,
+        stock_batch=stock,
+        delta=Decimal('10'),
+        reason=MovementReason.RECEIPT,
+    )
+    so = create_sales_order(
+        test_user,
+        [{'product_id': freebie.id, 'quantity': 5, 'unit_price': 20.00}],
+    )
+    confirm_sales_order(so)
+
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-markup_on_cost'})
+    assert res.status_code == status.HTTP_200_OK
+    markups = [p['markup_on_cost'] for p in res.json()['results']]
+    null_index = next((i for i, m in enumerate(markups) if m is None), len(markups))
+    non_null = [float(m) for m in markups[:null_index]]
+    assert non_null == sorted(non_null, reverse=True)
+    assert all(m is None for m in markups[null_index:])
 
 
 @pytest.mark.django_db

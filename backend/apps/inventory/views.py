@@ -1,8 +1,10 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Sum, DecimalField
+from django.db.models import Count, Q, Sum, DecimalField
 from django.db.models.functions import Coalesce
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
@@ -12,7 +14,12 @@ from rest_framework.views import APIView
 from rest_framework import generics
 
 from apps.core.pagination import ProductFinancialsCursorPagination, StockMovementCursorPagination
-from apps.inventory.commands import record_movement
+from apps.inventory.commands import (
+    BATCH_ALREADY_VOIDED,
+    BATCH_NO_REMAINING_QTY,
+    record_movement,
+    void_manual_stock_batch,
+)
 from apps.inventory.models import MovementReason, Product, Stock, UnitType
 from apps.inventory.serializers import (
     ProductSerializer,
@@ -74,7 +81,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         Query params:
         - search: icontains match on name, sku, description (SearchFilter)
-        - unit_of_measure: exact match (KG, G, L, ML, UNIT)
+        - unit_of_measure: single value or comma-separated list (KG, G, L, ML, UNIT)
         - in_stock: true | false — filter by total_stock > 0 or == 0
         """
         queryset = Product.objects.filter(user=self.request.user).annotate(
@@ -82,12 +89,23 @@ class ProductViewSet(viewsets.ModelViewSet):
                 Sum('stock_batches__current_quantity'),
                 0,
                 output_field=DecimalField()
-            )
+            ),
+            batch_count=Count('stock_batches'),
+            voided_batch_count=Count(
+                'stock_batches',
+                filter=Q(stock_batches__voided_at__isnull=False),
+            ),
         )
 
         unit = self.request.query_params.get('unit_of_measure')
-        if unit and unit in VALID_UNIT_VALUES:
-            queryset = queryset.filter(unit_of_measure=unit)
+        if unit:
+            units = {
+                part.strip().upper()
+                for part in unit.split(',')
+                if part.strip() in VALID_UNIT_VALUES
+            }
+            if units:
+                queryset = queryset.filter(unit_of_measure__in=units)
 
         in_stock = self.request.query_params.get('in_stock')
         if in_stock is not None:
@@ -113,8 +131,13 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         if product.stock_batches.exists():
             return Response(
-                {"detail": "Cannot delete a product with active stock batches. Remove all stock first."},
-                status=status.HTTP_409_CONFLICT
+                {
+                    'detail': (
+                        'Cannot delete a product with stock batch history. '
+                        'Batches may be fully consumed but are kept for traceability.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
             )
         return super().destroy(request, *args, **kwargs)
 
@@ -123,16 +146,24 @@ class StockViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     ordering = ["-created_at"]
 
-    def get_queryset(self):
+    def get_queryset(self, include_voided: bool | None = None):
         """
         Strictly isolate data: users can only see their own stock batches.
-        Optionally filter by product ID.
+        Optionally filter by product ID. Voided batches are hidden unless
+        ?include_voided=true is passed (or include_voided=True for internal lookups).
         """
         queryset = Stock.objects.filter(user=self.request.user).order_by('created_at')
         product_id = self.request.query_params.get('product')
         if product_id:
             queryset = queryset.filter(product_id=product_id)
+        if include_voided is None:
+            include_voided = self.request.query_params.get('include_voided', '').lower() in ('true', '1')
+        if not include_voided:
+            queryset = queryset.filter(voided_at__isnull=True)
         return queryset
+
+    def _get_stock_batch(self, *, include_voided: bool = False) -> Stock:
+        return get_object_or_404(self.get_queryset(include_voided=include_voided), pk=self.kwargs['pk'])
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -168,25 +199,56 @@ class StockViewSet(viewsets.ModelViewSet):
             )
             stock.initial_quantity += delta
 
-        serializer.save()
+        stock = serializer.save()
+        self._sync_po_item_batch_metadata(stock, validated)
+
+    def _sync_po_item_batch_metadata(self, stock: Stock, validated: dict) -> None:
+        """Keep PO line lot/best-before in sync when batch metadata is edited."""
+        if not stock.purchase_order_item_id:
+            return
+        po_item = stock.purchase_order_item
+        update_fields = []
+        if 'lot_code' in validated and po_item.lot_code != stock.lot_code:
+            po_item.lot_code = stock.lot_code
+            update_fields.append('lot_code')
+        if 'best_before' in validated and po_item.best_before != stock.best_before:
+            po_item.best_before = stock.best_before
+            update_fields.append('best_before')
+        if update_fields:
+            po_item.save(update_fields=update_fields)
 
     def destroy(self, request, *args, **kwargs):
-        stock = self.get_object()
-        if stock.movements.filter(reason=MovementReason.SALE).exists():
-            return Response(
-                {"detail": "Cannot delete a batch that has been used in a sale."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if stock.current_quantity < stock.initial_quantity:
-            return Response(
-                {"detail": "Cannot delete a partially or fully consumed batch."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return super().destroy(request, *args, **kwargs)
+        # Enforce auth and tenant scoping before returning 405 (ledger batches are never deleted).
+        self.get_object()
+        return Response(
+            {
+                'detail': (
+                    'Stock batches cannot be deleted. '
+                    'Use POST /inventory/stocks/{id}/void/ to void a manual batch.'
+                ),
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
+        stock = self._get_stock_batch(include_voided=True)
+        try:
+            stock = void_manual_stock_batch(user=request.user, stock_batch=stock)
+        except DjangoValidationError as exc:
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            detail = messages[0] if len(messages) == 1 else messages
+            status_code = status.HTTP_409_CONFLICT
+            if detail in {BATCH_NO_REMAINING_QTY, BATCH_ALREADY_VOIDED}:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return Response({'detail': detail}, status=status_code)
+
+        serializer = self.get_serializer(stock)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def movements(self, request, pk=None):
-        stock = self.get_object()
+        stock = self._get_stock_batch(include_voided=True)
         queryset = build_movement_queryset(request, stock_batch_id=stock.id)
         paginator = StockMovementCursorPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)

@@ -34,6 +34,7 @@ class Stock(TenantOwnedModel):
     initial_quantity = models.DecimalField(max_digits=12, decimal_places=3)
     current_quantity = models.DecimalField(max_digits=12, decimal_places=3)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    voided_at = models.DateTimeField(null=True, blank=True)
     history = HistoricalRecords()
 
     class Meta:
@@ -49,6 +50,8 @@ class MovementReason(models.TextChoices):
     SALE = 'SALE', 'Sale'
     RETURN = 'RETURN', 'Return'
     ADJUSTMENT = 'ADJUSTMENT', 'Adjustment'
+    VOID = 'VOID', 'Void'
+    RECEIPT_REVERSAL = 'RECEIPT_REVERSAL', 'Receipt reversal'
 
 
 class StockMovement(TenantOwnedModel):

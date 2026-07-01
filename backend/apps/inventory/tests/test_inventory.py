@@ -19,7 +19,9 @@ from apps.inventory.commands import record_movement
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.orders.commands import (
     cancel_sales_order,
+    confirm_purchase_order,
     confirm_sales_order,
+    create_purchase_order,
     create_sales_order,
 )
 
@@ -164,6 +166,16 @@ class TestProductListFilters:
         assert len(r.data['results']) == 1
         assert r.data['results'][0]['name'] == 'Juice'
 
+    def test_filter_by_multiple_units_of_measure(self, client_a, user_a):
+        Product.objects.create(user=user_a, name='Water', sku='H2O-1', unit_of_measure='L')
+        Product.objects.create(user=user_a, name='Syrup', sku='SYP-1', unit_of_measure='ML')
+        Product.objects.create(user=user_a, name='Flour', sku='FL-2', unit_of_measure='KG')
+
+        r = client_a.get(PRODUCTS_URL, {'unit_of_measure': 'L,ML'})
+        assert r.status_code == status.HTTP_200_OK
+        names = {p['name'] for p in r.data['results']}
+        assert names == {'Water', 'Syrup'}
+
     def test_filter_in_stock_excludes_zero_stock(self, client_a, user_a):
         stocked = Product.objects.create(user=user_a, name='Stocked', sku='ST-1', unit_of_measure='UNIT')
         Product.objects.create(user=user_a, name='Empty', sku='EM-1', unit_of_measure='UNIT')
@@ -253,6 +265,7 @@ class TestTotalStockAnnotation:
         r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_200_OK
         assert Decimal(r.data['total_stock']) == Decimal('0')
+        assert r.data['has_stock_batches'] is False
 
     def test_total_stock_only_counts_own_products_batches(self, client_a, user_a, user_b, product_a, product_b):
         make_stock(user_a, product_a, '100.000', lot='LOT-A1')
@@ -290,11 +303,28 @@ class TestProductDeletionGuard:
         make_stock(user_a, product_a, '10.000')
         r = client_a.delete(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_409_CONFLICT
+        assert 'traceability' in r.data['detail'].lower()
 
     def test_delete_product_without_stock_returns_204(self, client_a, product_a):
         r = client_a.delete(f'{PRODUCTS_URL}{product_a.id}/')
         assert r.status_code == status.HTTP_204_NO_CONTENT
         assert not Product.objects.filter(id=product_a.id).exists()
+
+    def test_list_product_has_stock_batches_when_consumed(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+        so = create_sales_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_price': 5.00}],
+        )
+        confirm_sales_order(so)
+
+        r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
+        assert r.status_code == status.HTTP_200_OK
+        assert Decimal(r.data['total_stock']) == Decimal('0')
+        assert r.data['has_stock_batches'] is True
+
+        batch.refresh_from_db()
+        assert batch.current_quantity == Decimal('0')
 
 
 # ---------------------------------------------------------------------------
@@ -396,18 +426,149 @@ class TestStockOperations:
         r = client_a.post(STOCKS_URL, payload, format='json')
         assert r.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_delete_own_stock_returns_204(self, client_a, user_a, product_a):
-        """Unconsumed manual batch (RECEIPT only) can be deleted."""
+    def test_delete_stock_returns_405(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+
+        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        assert r.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+        assert 'void' in r.data['detail'].lower()
+        assert Stock.objects.filter(id=batch.id).exists()
+        assert StockMovement.objects.filter(stock_batch_id=batch.id).exists()
+
+    def test_void_manual_stock_returns_200(self, client_a, user_a, product_a):
+        """Unconsumed manual batch is voided via POST; ledger rows persist."""
         batch = make_stock(user_a, product_a, '10.000')
         batch_id = batch.id
         assert batch.movements.filter(reason=MovementReason.RECEIPT).count() == 1
 
-        r = client_a.delete(f'{STOCKS_URL}{batch_id}/')
-        assert r.status_code == status.HTTP_204_NO_CONTENT
-        assert not Stock.objects.filter(id=batch_id).exists()
-        assert not StockMovement.objects.filter(stock_batch_id=batch_id).exists()
+        r = client_a.post(f'{STOCKS_URL}{batch_id}/void/')
+        assert r.status_code == status.HTTP_200_OK
+        assert r.data['voided_at'] is not None
+        assert r.data['is_po_linked'] is False
+        assert Decimal(r.data['current_quantity']) == Decimal('0')
 
-    def test_delete_partially_sold_batch_returns_409(self, client_a, user_a, product_a):
+        batch.refresh_from_db()
+        assert batch.voided_at is not None
+        assert batch.current_quantity == Decimal('0')
+        assert StockMovement.objects.filter(stock_batch_id=batch_id).count() == 2
+        assert batch.movements.filter(reason=MovementReason.VOID).exists()
+
+        product_r = client_a.get(f'{PRODUCTS_URL}{product_a.id}/')
+        assert product_r.data['has_voided_batches'] is True
+        assert product_r.data['has_stock_batches'] is True
+
+        movements_r = client_a.get(f'{STOCKS_URL}{batch_id}/movements/')
+        assert movements_r.status_code == status.HTTP_200_OK
+        reasons = {row['reason'] for row in movements_r.data['results']}
+        assert reasons == {MovementReason.RECEIPT, MovementReason.VOID}
+
+    def test_list_stocks_excludes_voided_batches(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+        void_r = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert void_r.status_code == status.HTTP_200_OK
+
+        r = client_a.get(STOCKS_URL, {'product': product_a.id})
+        assert r.status_code == status.HTTP_200_OK
+        ids = [item['id'] for item in r.data['results']]
+        assert str(batch.id) not in ids
+
+        r_with_voided = client_a.get(STOCKS_URL, {'product': product_a.id, 'include_voided': 'true'})
+        ids_with_voided = [item['id'] for item in r_with_voided.data['results']]
+        assert str(batch.id) in ids_with_voided
+
+    def test_void_another_users_stock_returns_404(self, client_a, user_b, product_b):
+        batch_b = make_stock(user_b, product_b, '10.000')
+        r = client_a.post(f'{STOCKS_URL}{batch_b.id}/void/')
+        assert r.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_revoid_batch_returns_400(self, client_a, user_a, product_a):
+        batch = make_stock(user_a, product_a, '10.000')
+        first = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert first.status_code == status.HTTP_200_OK
+
+        second = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert second.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already been voided' in second.data['detail'].lower()
+
+    def test_void_po_linked_stock_returns_409(self, client_a, user_a, product_a):
+        po = create_purchase_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        r = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
+        assert r.status_code == status.HTTP_409_CONFLICT
+        assert 'purchase order' in r.data['detail'].lower()
+        batch.refresh_from_db()
+        assert batch.voided_at is None
+
+    def test_patch_po_linked_lot_and_best_before_syncs_to_po_item(self, client_a, user_a, product_a):
+        from datetime import date
+
+        po = create_purchase_order(
+            user_a,
+            [{
+                'product_id': product_a.id,
+                'quantity': 10,
+                'unit_cost': 5.00,
+                'lot_code': 'LOT-ORIG',
+                'best_before': date(2026, 6, 1),
+            }],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+        po_item = batch.purchase_order_item
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'lot_code': 'LOT-UPDATED', 'best_before': '2026-12-31'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_200_OK
+        assert r.data['lot_code'] == 'LOT-UPDATED'
+        assert r.data['best_before'] == '2026-12-31'
+
+        po_item.refresh_from_db()
+        assert po_item.lot_code == 'LOT-UPDATED'
+        assert po_item.best_before == date(2026, 12, 31)
+
+    def test_patch_po_linked_quantity_returns_400(self, client_a, user_a, product_a):
+        po = create_purchase_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'initial_quantity': '20.000'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'initial_quantity' in r.data
+        assert 'purchase order' in r.data['initial_quantity'][0].lower()
+
+    def test_patch_po_linked_unit_cost_returns_400(self, client_a, user_a, product_a):
+        po = create_purchase_order(
+            user_a,
+            [{'product_id': product_a.id, 'quantity': 10, 'unit_cost': 5.00}],
+        )
+        confirm_purchase_order(po)
+        batch = Stock.objects.get(purchase_order_item__order=po)
+
+        r = client_a.patch(
+            f'{STOCKS_URL}{batch.id}/',
+            {'unit_cost': '9.99'},
+            format='json',
+        )
+        assert r.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'unit_cost' in r.data
+        assert 'purchase order' in r.data['unit_cost'][0].lower()
+
+    def test_void_partially_sold_batch_returns_409(self, client_a, user_a, product_a):
         batch = make_stock(user_a, product_a, '100.000')
         so = create_sales_order(
             user_a,
@@ -415,11 +576,12 @@ class TestStockOperations:
         )
         confirm_sales_order(so)
 
-        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        r = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
         assert r.status_code == status.HTTP_409_CONFLICT
+        assert 'sale' in r.data['detail'].lower()
         assert Stock.objects.filter(id=batch.id).exists()
 
-    def test_delete_batch_after_sale_and_cancel_returns_409(self, client_a, user_a, product_a):
+    def test_void_batch_after_sale_and_cancel_returns_409(self, client_a, user_a, product_a):
         batch = make_stock(user_a, product_a, '100.000')
         so = create_sales_order(
             user_a,
@@ -431,7 +593,7 @@ class TestStockOperations:
         batch.refresh_from_db()
         assert batch.current_quantity == batch.initial_quantity
 
-        r = client_a.delete(f'{STOCKS_URL}{batch.id}/')
+        r = client_a.post(f'{STOCKS_URL}{batch.id}/void/')
         assert r.status_code == status.HTTP_409_CONFLICT
         assert 'sale' in r.data['detail'].lower()
         assert Stock.objects.filter(id=batch.id).exists()

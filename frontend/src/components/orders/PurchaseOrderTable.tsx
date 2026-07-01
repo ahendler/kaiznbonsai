@@ -8,6 +8,7 @@ import type { PurchaseOrder } from '@/api/orders'
 import { getApiErrorMessage } from '@/api/errors'
 import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCancelTooltip, orderStatusColor, sumLineTotals } from '@/utils/orders'
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
+import { OrderTableTitleCell, ORDER_NAME_COLUMN_MAX_WIDTH } from '@/components/orders/OrderTableTitleCell'
 import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
 
 interface PurchaseOrderTableProps {
@@ -55,6 +56,9 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
     return (
       <Table.Tr key={order.id} style={{ cursor: onViewOrder ? 'pointer' : undefined }} onClick={() => onViewOrder?.(order)}>
         <Table.Td>#{order.id}</Table.Td>
+        <Table.Td maw={ORDER_NAME_COLUMN_MAX_WIDTH}>
+          <OrderTableTitleCell title={order.title} />
+        </Table.Td>
         <Table.Td>{new Date(order.created_at).toLocaleDateString()}</Table.Td>
         <Table.Td>
           <Badge color={orderStatusColor(order.status)}>{order.status}</Badge>
@@ -117,6 +121,7 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
         <Table.Thead>
           <Table.Tr>
             <Table.Th>ID</Table.Th>
+            <Table.Th maw={ORDER_NAME_COLUMN_MAX_WIDTH}>Name</Table.Th>
             <Table.Th>Date</Table.Th>
             <Table.Th>Status</Table.Th>
             <Table.Th>Items</Table.Th>
@@ -124,7 +129,7 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
             <Table.Th ta="center">Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
-        <Table.Tbody>{rows?.length ? rows : <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" ta="center">No purchase orders found.</Text></Table.Td></Table.Tr>}</Table.Tbody>
+        <Table.Tbody>{rows?.length ? rows : <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" ta="center">No purchase orders found.</Text></Table.Td></Table.Tr>}</Table.Tbody>
       </Table>
 
       {hasNextPage && (

@@ -23,6 +23,8 @@ export type ProductFinancialOrdering =
   | '-profit'
   | '-margin'
   | '-markup_on_cost'
+  | '-cogs'
+  | 'cogs'
   | 'name';
 
 export interface ProductFinancialListFilters {
