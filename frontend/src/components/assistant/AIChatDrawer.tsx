@@ -19,7 +19,7 @@ import ChatMessageBubble from './ChatMessage'
 const SUGGESTION_PROMPTS = [
   'How does my gross margin in the running month compare to all-time?',
   "What draft purchase orders do I have open, and what's the total cost of inventory still waiting to be received?",
-  'Walk me through everything that happened with Espresso Beans — House Blend last month — purchases, sales, and net stock change.',
+  'Walk me through everything that happened with Espresso Beans last month — purchases, sales, and net stock change.',
 ]
 
 // Keep at most this many messages in history sent to the backend.
