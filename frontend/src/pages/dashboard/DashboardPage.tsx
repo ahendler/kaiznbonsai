@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   SimpleGrid, Card, Text, Group, Center, Loader,
   Table, Progress, Badge, Title, ThemeIcon, Stack, Paper,
@@ -15,14 +15,22 @@ import {
   type ActivityFilter,
   type MarginBand,
   type ProductFinancialListFilters,
+  type ProductFinancialOrdering,
 } from '@/api/financials'
 import { getApiErrorMessage } from '@/api/errors'
 import FinancialPeriodFilter from '@/components/dashboard/FinancialPeriodFilter'
-import { formatCurrency, formatMarginPercent, formatQuantity, getMarginColor } from '@/utils/financials'
+import {
+  formatCurrency,
+  formatMarginPercent,
+  formatQuantity,
+  getMarginColor,
+  getMarginProgressValue,
+} from '@/utils/financials'
 import {
   DEFAULT_FINANCIAL_PERIOD,
   formatFinancialPeriodLabel,
   isFinancialPeriodActive,
+  isFinancialPeriodReady,
   toFinancialPeriodParams,
   type FinancialPeriod,
 } from '@/utils/financialPeriod'
@@ -32,29 +40,35 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('')
   const [marginBand, setMarginBand] = useState<MarginBand | null>(null)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
+  const [ordering, setOrdering] = useState<ProductFinancialOrdering>('-revenue')
   const [debouncedSearch] = useDebouncedValue(search, 300)
 
-  const periodParams = toFinancialPeriodParams(period)
+  const periodReady = isFinancialPeriodReady(period)
+  const periodParams = periodReady ? toFinancialPeriodParams(period) : {}
   const periodActive = isFinancialPeriodActive(period)
   const periodLabel = formatFinancialPeriodLabel(period)
+  const customPeriodIncomplete = period.preset === 'custom' && !periodReady
 
   const tableFilters: ProductFinancialListFilters = {
     ...periodParams,
     search: debouncedSearch,
     ...(marginBand ? { margin_band: marginBand } : {}),
     ...(activityFilter !== 'all' ? { activity: activityFilter } : {}),
+    ...(ordering !== '-created_at' ? { ordering } : {}),
   }
 
   const hasActiveTableFilters = Boolean(
     debouncedSearch || marginBand || activityFilter !== 'all',
   )
 
+  const queryEnabled = periodReady
+
   const {
     data: overall,
     isLoading: overallLoading,
     isError: overallError,
     error: overallErrorObj,
-  } = useOverallFinancials(periodParams)
+  } = useOverallFinancials(periodParams, { enabled: queryEnabled })
 
   const {
     data: productPages,
@@ -65,11 +79,13 @@ export default function DashboardPage() {
     hasNextPage,
     isError: productsError,
     error: productsErrorObj,
-  } = useInfiniteProductFinancials(tableFilters)
+  } = useInfiniteProductFinancials(tableFilters, { enabled: queryEnabled })
 
   const products = productPages?.pages.flatMap((page) => page.results) ?? []
 
   const { ref, entry } = useIntersection({ threshold: 1 })
+
+  const lastErrorKey = useRef<string | null>(null)
 
   useEffect(() => {
     if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -78,17 +94,28 @@ export default function DashboardPage() {
   }, [entry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   useEffect(() => {
-    const err = overallError ? overallErrorObj : productsError ? productsErrorObj : null
-    if (err) {
-      notifications.show({
-        title: 'Could not load financials',
-        message: getApiErrorMessage(err, 'Invalid period or server error.'),
-        color: 'red',
-      })
+    const messages: string[] = []
+    if (overallError && overallErrorObj) {
+      messages.push(getApiErrorMessage(overallErrorObj, 'Could not load summary financials.'))
     }
+    if (productsError && productsErrorObj) {
+      messages.push(getApiErrorMessage(productsErrorObj, 'Could not load product financials.'))
+    }
+    if (messages.length === 0) {
+      lastErrorKey.current = null
+      return
+    }
+    const key = messages.join('|')
+    if (key === lastErrorKey.current) return
+    lastErrorKey.current = key
+    notifications.show({
+      title: 'Could not load financials',
+      message: messages.join(' '),
+      color: 'red',
+    })
   }, [overallError, overallErrorObj, productsError, productsErrorObj])
 
-  const initialLoading = (overallLoading || productsLoading) && !overall && !productPages
+  const initialLoading = queryEnabled && (overallLoading || productsLoading) && !overall && !productPages
   const isTableRefreshing = productsFetching && !isFetchingNextPage
 
   if (initialLoading) {
@@ -117,7 +144,7 @@ export default function DashboardPage() {
         </div>
         <Group gap="sm" wrap="wrap" align="center">
           <FinancialPeriodFilter value={period} onChange={setPeriod} />
-          {periodLabel && period.preset !== 'custom' && (
+          {periodLabel && (
             <Badge size="lg" variant="light" color="gray">
               {periodLabel}
             </Badge>
@@ -128,6 +155,19 @@ export default function DashboardPage() {
         </Group>
       </Group>
 
+      {customPeriodIncomplete && (
+        <Paper shadow="sm" radius="md" p="xl" withBorder>
+          <Center>
+            <Stack align="center" gap="sm">
+              <IconChartBar size={48} color="var(--mantine-color-gray-4)" />
+              <Text c="dimmed" size="lg" fw={500}>Select a start and end date</Text>
+              <Text c="dimmed" size="sm">Choose both dates in the custom range picker to load financials.</Text>
+            </Stack>
+          </Center>
+        </Paper>
+      )}
+
+      {!customPeriodIncomplete && (
       <Stack gap="xl">
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="lg">
           {stats.map((stat) => (
@@ -161,7 +201,7 @@ export default function DashboardPage() {
             <Center
               pos="absolute"
               inset={0}
-              style={{ zIndex: 1, backgroundColor: 'rgba(255, 255, 255, 0.6)' }}
+              style={{ zIndex: 1, backgroundColor: 'color-mix(in srgb, var(--mantine-color-body) 60%, transparent)' }}
             >
               <Loader size="sm" />
             </Center>
@@ -175,6 +215,8 @@ export default function DashboardPage() {
               onActivityFilterChange={setActivityFilter}
               marginBand={marginBand}
               onMarginBandChange={setMarginBand}
+              ordering={ordering}
+              onOrderingChange={setOrdering}
             />
 
             {products.length === 0 ? (
@@ -211,7 +253,7 @@ export default function DashboardPage() {
                   <Table.Tbody>
                     {products.map((product) => {
                       const marginColor = getMarginColor(product.margin)
-                      const marginNum = Number(product.margin)
+                      const progressValue = getMarginProgressValue(product.margin)
 
                       return (
                         <Table.Tr key={product.id}>
@@ -228,7 +270,11 @@ export default function DashboardPage() {
                             <Group justify="space-between" mb={4}>
                               <Text size="sm" fw={500}>{formatMarginPercent(product.margin)}</Text>
                             </Group>
-                            <Progress value={marginNum} color={marginColor} size="sm" radius="xl" />
+                            {progressValue !== null ? (
+                              <Progress value={progressValue} color={marginColor} size="sm" radius="xl" />
+                            ) : (
+                              <Text size="xs" c="red">Loss</Text>
+                            )}
                           </Table.Td>
                         </Table.Tr>
                       )
@@ -247,6 +293,7 @@ export default function DashboardPage() {
             )}
         </Paper>
       </Stack>
+      )}
     </Stack>
   )
 }

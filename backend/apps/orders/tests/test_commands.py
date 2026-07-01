@@ -214,6 +214,23 @@ class TestSalesOrders:
         assert dated.current_quantity == Decimal('5.000')
         assert undated.current_quantity == Decimal('10.000')
 
+    def test_confirm_fefo_same_best_before_uses_fifo_tiebreak(self, user, product):
+        same_date = date(2026, 6, 1)
+        older = make_stock_with_receipt(user, product, 10, best_before=same_date)
+        newer = make_stock_with_receipt(user, product, 10, best_before=same_date)
+        assert older.created_at < newer.created_at
+        so = create_sales_order(
+            user,
+            [{'product_id': product.id, 'quantity': 5, 'unit_price': 10.00}],
+        )
+
+        confirm_sales_order(so, allocation_strategy=StockAllocationStrategy.FEFO)
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        assert older.current_quantity == Decimal('5.000')
+        assert newer.current_quantity == Decimal('10.000')
+
     def test_confirm_fefo_all_undated_matches_fifo(self, user, product):
         make_stock_with_receipt(user, product, 10)
         make_stock_with_receipt(user, product, 20)

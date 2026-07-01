@@ -17,6 +17,7 @@ function periodKeyPart(period: FinancialPeriodParams): FinancialPeriodParams | '
 
 export type MarginBand = 'negative' | 'low' | 'medium' | 'high';
 export type ActivityFilter = 'all' | 'movement' | 'stale';
+export type ProductFinancialOrdering = '-created_at' | '-revenue' | '-profit' | '-margin' | 'name';
 
 export interface ProductFinancialListFilters {
   from?: string;
@@ -24,6 +25,7 @@ export interface ProductFinancialListFilters {
   search?: string;
   margin_band?: MarginBand;
   activity?: ActivityFilter;
+  ordering?: ProductFinancialOrdering;
 }
 
 function productFinancialFiltersKey(
@@ -43,6 +45,9 @@ function productFinancialFiltersKey(
   }
   if (filters.activity && filters.activity !== 'all') {
     key.activity = filters.activity;
+  }
+  if (filters.ordering && filters.ordering !== '-created_at') {
+    key.ordering = filters.ordering;
   }
   return key;
 }
@@ -104,20 +109,28 @@ export const listProductFinancials = async (
   if (filters.activity && filters.activity !== 'all') {
     params.activity = filters.activity;
   }
+  if (filters.ordering && filters.ordering !== '-created_at') {
+    params.ordering = filters.ordering;
+  }
   const response = await api.get('/inventory/financials/products/', { params });
   return response.data;
 };
 
-export const useOverallFinancials = (period: FinancialPeriodParams = {}) => {
+export const useOverallFinancials = (
+  period: FinancialPeriodParams = {},
+  options: { enabled?: boolean } = {},
+) => {
   return useQuery({
     queryKey: FINANCIALS_QUERY_KEYS.overall(period),
     queryFn: () => listOverallFinancials(period),
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   });
 };
 
 export const useInfiniteProductFinancials = (
   filters: ProductFinancialListFilters = {},
+  options: { enabled?: boolean } = {},
 ) => {
   return useInfiniteQuery({
     queryKey: FINANCIALS_QUERY_KEYS.productsInfinite(filters),
@@ -132,6 +145,7 @@ export const useInfiniteProductFinancials = (
       return url.searchParams.get('cursor');
     },
     placeholderData: keepPreviousData,
+    enabled: options.enabled ?? true,
   });
 };
 

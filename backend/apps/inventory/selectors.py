@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.db.models import Sum, F, DecimalField, OuterRef, Subquery, Value, Case, When, Q
 from django.db.models.functions import Coalesce
 
+from apps.core.pagination import financial_ordering_with_tiebreaker
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.orders.models import OrderStatus
 
@@ -87,12 +88,14 @@ def _apply_margin_band_filter(qs, margin_band: str | None):
         return qs
     if margin_band == 'negative':
         return qs.filter(profit__lt=0)
+    # low / medium / high require sales in the selected period (revenue > 0)
+    with_revenue = qs.filter(revenue__gt=0)
     if margin_band == 'low':
-        return qs.filter(profit__gte=0, margin__lt=20)
+        return with_revenue.filter(profit__gte=0, margin__lt=20)
     if margin_band == 'medium':
-        return qs.filter(margin__gte=20, margin__lt=40)
+        return with_revenue.filter(margin__gte=20, margin__lt=40)
     if margin_band == 'high':
-        return qs.filter(margin__gte=40)
+        return with_revenue.filter(margin__gte=40)
     return qs
 
 
@@ -104,6 +107,7 @@ def get_products_with_financials(
     search: str | None = None,
     margin_band: str | None = None,
     activity: str = 'all',
+    ordering: str = '-created_at',
 ):
     products = Product.objects.filter(user=user)
     if search:
@@ -163,4 +167,4 @@ def get_products_with_financials(
     elif activity == 'stale':
         products = products.filter(qty_purchased=0, qty_sold=0)
 
-    return products.order_by('-created_at')
+    return products.order_by(*financial_ordering_with_tiebreaker(ordering))

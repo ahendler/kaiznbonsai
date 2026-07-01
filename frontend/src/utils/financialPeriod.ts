@@ -125,3 +125,11 @@ export function formatFinancialPeriodLabel(period: FinancialPeriod): string | nu
 export function isFinancialPeriodActive(period: FinancialPeriod): boolean {
   return period.preset !== 'all_time' && period.from !== null && period.to !== null
 }
+
+/** Custom preset requires both dates before queries run. */
+export function isFinancialPeriodReady(period: FinancialPeriod): boolean {
+  if (period.preset !== 'custom') {
+    return true
+  }
+  return period.from !== null && period.to !== null
+}

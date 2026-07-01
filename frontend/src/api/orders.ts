@@ -147,8 +147,8 @@ export const useConfirmPurchaseOrder = () => {
     mutationFn: orderApi.confirmPurchaseOrder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      // Confirming a PO generates stock, so we invalidate inventory too
       queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      invalidateFinancials(queryClient);
     },
   });
 };
@@ -160,6 +160,7 @@ export const useCancelPurchaseOrder = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['stocks'] });
+      invalidateFinancials(queryClient);
     },
   });
 };

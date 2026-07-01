@@ -1,6 +1,6 @@
 import { Badge, Button, Group, Modal, SegmentedControl, Stack, Text } from '@mantine/core'
 import type { StockAllocationStrategy } from '@/api/orders'
-import { ALLOCATION_OPTIONS } from '@/utils/orders'
+import { ALLOCATION_OPTIONS, getAllocationDescription } from '@/utils/orders'
 
 interface OrderActionConfirmModalProps {
   opened: boolean
@@ -29,9 +29,7 @@ export function OrderActionConfirmModal({
   onClose,
   onConfirm,
 }: OrderActionConfirmModalProps) {
-  const allocationDescription = ALLOCATION_OPTIONS.find(
-    (option) => option.value === allocationStrategy,
-  )?.description
+  const allocationDescription = getAllocationDescription(allocationStrategy)
 
   return (
     <Modal

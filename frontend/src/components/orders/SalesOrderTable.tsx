@@ -31,11 +31,14 @@ export function SalesOrderTable() {
     confirmMutation.mutate(
       { id, allocationStrategy },
       {
-        onSuccess: () => notifications.show({
-          title: 'Confirmed',
-          message: 'Sales order confirmed. Stock has been deducted.',
-          color: 'green',
-        }),
+        onSuccess: () => {
+          setActionOrder(null)
+          notifications.show({
+            title: 'Confirmed',
+            message: 'Sales order confirmed. Stock has been deducted.',
+            color: 'green',
+          })
+        },
         onError: (err) => notifications.show({
           title: 'Error',
           message: `Failed to confirm: ${getApiErrorMessage(err)}`,
@@ -47,7 +50,10 @@ export function SalesOrderTable() {
 
   const handleCancel = (id: number) => {
     cancelMutation.mutate(id, {
-      onSuccess: () => notifications.show({ title: 'Cancelled', message: 'Sales order cancelled.', color: 'blue' }),
+      onSuccess: () => {
+        setActionOrder(null)
+        notifications.show({ title: 'Cancelled', message: 'Sales order cancelled.', color: 'blue' })
+      },
       onError: (err) => notifications.show({ title: 'Cannot Cancel', message: getApiErrorMessage(err), color: 'red', autoClose: 6000 }),
     })
   }

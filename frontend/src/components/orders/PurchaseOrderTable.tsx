@@ -28,14 +28,20 @@ export function PurchaseOrderTable() {
 
   const handleConfirm = (id: number) => {
     confirmMutation.mutate(id, {
-      onSuccess: () => notifications.show({ title: 'Confirmed', message: 'Order confirmed. Stock has been generated!', color: 'green' }),
+      onSuccess: () => {
+        setActionOrder(null)
+        notifications.show({ title: 'Confirmed', message: 'Order confirmed. Stock has been generated!', color: 'green' })
+      },
       onError: (err) => notifications.show({ title: 'Error', message: `Failed to confirm: ${getApiErrorMessage(err)}`, color: 'red' }),
     })
   }
 
   const handleCancel = (id: number) => {
     cancelMutation.mutate(id, {
-      onSuccess: () => notifications.show({ title: 'Cancelled', message: 'Order cancelled.', color: 'blue' }),
+      onSuccess: () => {
+        setActionOrder(null)
+        notifications.show({ title: 'Cancelled', message: 'Order cancelled.', color: 'blue' })
+      },
       onError: (err) => notifications.show({ title: 'Cannot Cancel', message: getApiErrorMessage(err), color: 'red', autoClose: 6000 }),
     })
   }

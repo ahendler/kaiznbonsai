@@ -1,11 +1,11 @@
 import { Group, Select, TextInput } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
-import type { ActivityFilter, MarginBand } from '@/api/financials'
+import type { ActivityFilter, MarginBand, ProductFinancialOrdering } from '@/api/financials'
 
 const ACTIVITY_FILTER_OPTIONS = [
   { value: 'all', label: 'All products' },
-  { value: 'movement', label: 'Movemented Products' },
-  { value: 'stale', label: 'Stale Products' },
+  { value: 'movement', label: 'With activity' },
+  { value: 'stale', label: 'No activity' },
 ] as const
 
 const MARGIN_BAND_OPTIONS = [
@@ -15,6 +15,14 @@ const MARGIN_BAND_OPTIONS = [
   { value: 'high', label: 'High (≥ 40%)' },
 ] as const
 
+const ORDERING_OPTIONS = [
+  { value: '-revenue', label: 'Revenue (high → low)' },
+  { value: '-profit', label: 'Profit (high → low)' },
+  { value: '-margin', label: 'Margin (high → low)' },
+  { value: 'name', label: 'Name (A → Z)' },
+  { value: '-created_at', label: 'Recently added' },
+] as const
+
 interface DashboardProductFiltersProps {
   search: string
   onSearchChange: (value: string) => void
@@ -22,6 +30,8 @@ interface DashboardProductFiltersProps {
   onActivityFilterChange: (value: ActivityFilter) => void
   marginBand: MarginBand | null
   onMarginBandChange: (value: MarginBand | null) => void
+  ordering: ProductFinancialOrdering
+  onOrderingChange: (value: ProductFinancialOrdering) => void
 }
 
 export default function DashboardProductFilters({
@@ -31,6 +41,8 @@ export default function DashboardProductFilters({
   onActivityFilterChange,
   marginBand,
   onMarginBandChange,
+  ordering,
+  onOrderingChange,
 }: DashboardProductFiltersProps) {
   return (
     <Group align="flex-end" wrap="wrap" gap="md">
@@ -55,6 +67,13 @@ export default function DashboardProductFilters({
         data={[...MARGIN_BAND_OPTIONS]}
         value={marginBand}
         onChange={(value) => onMarginBandChange(value as MarginBand | null)}
+      />
+      <Select
+        className="w-[200px]"
+        data={[...ORDERING_OPTIONS]}
+        value={ordering}
+        onChange={(value) => onOrderingChange((value as ProductFinancialOrdering | null) ?? '-created_at')}
+        allowDeselect={false}
       />
     </Group>
   )

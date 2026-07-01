@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications'
 import { IconTrash, IconEdit, IconCheck, IconX } from '@tabler/icons-react'
 import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
+import { invalidateFinancials } from '@/api/financials'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
 
 interface StockFormValues {
@@ -79,6 +80,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch added successfully', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      invalidateFinancials(queryClient)
       form.reset()
     },
     onError: (error) => {
@@ -97,6 +99,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch removed successfully', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      invalidateFinancials(queryClient)
     },
     onError: (error) => {
       notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to delete batch.'), color: 'red' })
@@ -124,6 +127,7 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       notifications.show({ title: 'Success', message: 'Batch updated', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      invalidateFinancials(queryClient)
       setEditingStockId(null)
     },
     onError: (error) => {

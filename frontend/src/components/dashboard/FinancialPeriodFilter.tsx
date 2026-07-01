@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Group, Select } from '@mantine/core'
 import { DatePickerInput } from '@mantine/dates'
 import {
@@ -26,6 +26,7 @@ function toDraftRange(period: FinancialPeriod): [Date | null, Date | null] {
 
 export default function FinancialPeriodFilter({ value, onChange }: FinancialPeriodFilterProps) {
   const [draftRange, setDraftRange] = useState<[Date | null, Date | null]>(() => toDraftRange(value))
+  const maxDate = useMemo(() => new Date(), [])
 
   useEffect(() => {
     if (value.preset !== 'custom') {
@@ -76,7 +77,7 @@ export default function FinancialPeriodFilter({ value, onChange }: FinancialPeri
           w={300}
           miw={300}
           flex="0 0 auto"
-          maxDate={new Date()}
+          maxDate={maxDate}
           clearable
         />
       )}

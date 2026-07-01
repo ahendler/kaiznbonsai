@@ -448,7 +448,7 @@ def test_product_financials_api_margin_band_negative(auth_client, financial_data
 
 
 @pytest.mark.django_db
-def test_product_financials_api_margin_band_low_includes_zero_revenue(
+def test_product_financials_api_margin_band_low_excludes_zero_revenue(
     auth_client,
     financial_data,
     test_user,
@@ -462,28 +462,12 @@ def test_product_financials_api_margin_band_low_includes_zero_revenue(
     res = auth_client.get(PRODUCT_FINANCIALS_URL, {'margin_band': 'low'})
     assert res.status_code == status.HTTP_200_OK
     skus = {p['sku'] for p in res.json()['results']}
-    assert 'IDLE-01' in skus
+    assert 'IDLE-01' not in skus
     assert 'LOSS-01' not in skus
 
 
 @pytest.mark.django_db
-def test_product_financials_api_exclude_no_movement(auth_client, financial_data, test_user):
-    Product.objects.create(
-        user=test_user,
-        name='Idle',
-        sku='IDLE-01',
-        unit_of_measure='UNIT',
-    )
-    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'activity': 'movement'})
-    assert res.status_code == status.HTTP_200_OK
-    skus = {p['sku'] for p in res.json()['results']}
-    assert 'IDLE-01' not in skus
-    assert 'P1' in skus
-    assert 'P2' in skus
-
-
-@pytest.mark.django_db
-def test_product_financials_api_exclude_no_movement_with_period(auth_client, financial_data):
+def test_product_financials_api_activity_movement_empty_period(auth_client, financial_data):
     res = auth_client.get(
         PRODUCT_FINANCIALS_URL,
         {'from': '2026-04-01', 'to': '2026-04-30', 'activity': 'movement'},
@@ -493,7 +477,7 @@ def test_product_financials_api_exclude_no_movement_with_period(auth_client, fin
 
 
 @pytest.mark.django_db
-def test_product_financials_api_exclude_no_movement_keeps_purchases_only(
+def test_product_financials_api_activity_movement_keeps_purchases_only(
     auth_client,
     financial_data,
 ):
@@ -575,7 +559,7 @@ def test_product_financials_selector_search_and_margin_band(test_user, financial
 
 
 @pytest.mark.django_db
-def test_product_financials_selector_exclude_no_movement(test_user, financial_data):
+def test_product_financials_selector_activity_movement(test_user, financial_data):
     Product.objects.create(
         user=test_user,
         name='Idle',
@@ -586,3 +570,18 @@ def test_product_financials_selector_exclude_no_movement(test_user, financial_da
     active_only = get_products_with_financials(test_user, activity='movement')
     assert all_products.count() == 3
     assert active_only.count() == 2
+
+
+@pytest.mark.django_db
+def test_product_financials_api_ordering_by_revenue(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-revenue'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    revenues = [float(p['revenue']) for p in results]
+    assert revenues == sorted(revenues, reverse=True)
+
+
+@pytest.mark.django_db
+def test_product_financials_api_invalid_ordering(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': 'invalid'})
+    assert res.status_code == status.HTTP_400_BAD_REQUEST

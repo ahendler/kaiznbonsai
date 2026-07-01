@@ -2,6 +2,7 @@ from rest_framework.exceptions import ValidationError
 
 VALID_MARGIN_BANDS = frozenset({'negative', 'low', 'medium', 'high'})
 VALID_ACTIVITY_FILTERS = frozenset({'all', 'movement', 'stale'})
+VALID_ORDERINGS = frozenset({'-created_at', '-revenue', '-profit', '-margin', 'name'})
 
 
 def parse_search(value: str | None) -> str | None:
@@ -41,12 +42,16 @@ def parse_activity(value: str | None) -> str:
     return value
 
 
-def parse_exclude_no_movement(value: str | None) -> bool:
-    if value is None:
-        return False
-    normalized = value.lower()
-    if normalized in ('true', '1'):
-        return True
-    if normalized in ('false', '0', ''):
-        return False
-    raise ValidationError({'detail': 'exclude_no_movement must be true or false.'})
+def parse_ordering(value: str | None) -> str:
+    if value is None or value == '':
+        return '-created_at'
+    if value not in VALID_ORDERINGS:
+        raise ValidationError(
+            {
+                'detail': (
+                    'Invalid ordering. Choose one of: '
+                    f'{", ".join(sorted(VALID_ORDERINGS))}.'
+                )
+            }
+        )
+    return value
