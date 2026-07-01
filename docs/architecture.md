@@ -131,6 +131,7 @@ JWT access tokens are returned in the JSON body. Refresh tokens are **httpOnly c
 
 ## CORS and API Documentation
 
+- **`ALLOWED_HOSTS`:** read from the environment as a comma-separated list (`config/settings.py`). Local dev defaults to `localhost,127.0.0.1`. Production is set via CDK from `infrastructure/.env` — CloudFront distribution hostname plus `.elasticbeanstalk.com` for ELB health checks. CloudFront forwards the viewer `Host` header to Django (`OriginRequestPolicy.ALL_VIEWER`).
 - **`django-cors-headers`:** configured in `config/settings.py`. `CORS_ALLOWED_ORIGINS` is read from the environment and defaults to `http://localhost:3000`. In production the frontend and API share the same CloudFront origin, so CORS is only active in local development.
 - **`drf-spectacular`:** generates OpenAPI 3 schema and interactive docs:
   - Swagger UI: `/api/docs/`

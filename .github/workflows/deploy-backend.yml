@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/docs-and-deploy
     paths:
       - "backend/**"
       - "infrastructure/infrastructure/backend_stack.py"

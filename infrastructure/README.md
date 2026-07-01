@@ -50,6 +50,10 @@ Postgres runs on the same EB instance as Django (not RDS). See [`docs/architectu
 
 Production EB environment variables are set at **`cdk deploy`** time from `infrastructure/.env` (template: `.env.example`). `backend_stack.py` reads that file and writes values into the EB environment.
 
+| Variable | Purpose |
+|----------|---------|
+| `ALLOWED_HOSTS` | Comma-separated Django host allowlist. Include the CloudFront distribution hostname and `.elasticbeanstalk.com` so ELB health checks succeed. |
+
 ## Stacks
 
 `BackendStack` must be deployed first — `FrontendStack` takes the EB endpoint URL as a constructor parameter to wire the `/api/*` and `/admin/*` CloudFront behaviors.
