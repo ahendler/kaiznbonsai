@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.db.models import Sum, F, DecimalField, OuterRef, Subquery, Value, Case, When, Q
 from django.db.models.functions import Coalesce
 
-from apps.core.pagination import financial_ordering_with_tiebreaker
+from apps.core.pagination import financial_sql_ordering
 from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.orders.models import OrderStatus
 
@@ -192,7 +192,7 @@ def get_products_with_financials(
     elif activity == 'stale':
         products = products.filter(qty_purchased=0, qty_sold=0)
 
-    return products.order_by(*financial_ordering_with_tiebreaker(ordering))
+    return products.order_by(*financial_sql_ordering(ordering))
 
 
 def list_stock_movements(
