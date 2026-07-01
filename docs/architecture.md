@@ -137,6 +137,26 @@ JWT access tokens are returned in the JSON body. Refresh tokens are **httpOnly c
   - ReDoc: `/api/redoc/`
   - Raw schema: `/api/schema/`
 
+## AI Chat Assistant
+
+Natural-language Q&A on the dashboard, backed by Claude Sonnet 4.6 with adaptive thinking and tool use. The backend is stateless — the frontend sends the full in-session conversation on each turn.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/assistant/chat/` | Send `messages` (user/assistant turns); returns `{ "reply": "..." }` |
+
+**Request body:** `{ "messages": [{ "role": "user" \| "assistant", "content": "..." }, ...] }` — include the new user message in the array before sending.
+
+**Auth:** `IsAuthenticated` only. Tenant isolation is structural: every tool calls the existing selector layer with `user=request.user`.
+
+**Agentic loop:** `ChatView` calls the Anthropic API with six read-only tool definitions (`get_overall_financials`, `get_products_with_financials`, `get_stock_levels`, `list_purchase_orders`, `list_sales_orders`, `list_stock_movements`). The model may iterate up to 10 tool rounds per request. Tool executors live in `apps/assistant/tools.py` and delegate to `apps/inventory/selectors.py` and `apps/orders/selectors.py`.
+
+**Configuration:** `ANTHROPIC_API_KEY` (server-side only). Missing key does not crash startup; the chat endpoint returns 503 at call time.
+
+**Frontend:** `AIChatDrawer` on `DashboardPage` — FAB opens a right-side drawer; message history is held in React state (not persisted across reloads). Cap at 20 messages sent to the backend per turn.
+
+Implemented in `apps/assistant/`. See [`docs/phases/phase-31-ai-chat-assistant.md`](phases/phase-31-ai-chat-assistant.md).
+
 ## Test Database: Always Postgres
 
 Tests run against the Dockerized Postgres instance. `pytest.ini` points at `config.settings`, and the Postgres container must be running before executing the test suite:

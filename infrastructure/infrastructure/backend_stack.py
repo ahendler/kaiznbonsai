@@ -144,6 +144,11 @@ class BackendStack(Stack):
                     value=_require_env("POSTGRES_DB"),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="ANTHROPIC_API_KEY",
+                    value=os.environ.get("ANTHROPIC_API_KEY", ""),
+                ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elb:healthcheck",
                     option_name="Target",
                     value="HTTP:80/admin/login/",

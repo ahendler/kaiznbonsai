@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   SimpleGrid, Card, Text, Group, Center, Loader,
-  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper,
+  Table, Progress, Badge, Title, ThemeIcon, Stack, Paper, Affix, ActionIcon, Tooltip,
 } from '@mantine/core'
 import {
-  IconCash, IconTrendingUp, IconTrendingDown, IconPackage, IconChartBar,
+  IconCash, IconTrendingUp, IconTrendingDown, IconPackage, IconChartBar, IconSparkles,
 } from '@tabler/icons-react'
-import { useDebouncedValue, useIntersection } from '@mantine/hooks'
+import { useDebouncedValue, useDisclosure, useIntersection } from '@mantine/hooks'
+import AIChatDrawer from '@/components/assistant/AIChatDrawer'
+import type { ChatMessage } from '@/api/assistant'
 import { notifications } from '@mantine/notifications'
 import DashboardProductFilters from '@/components/dashboard/DashboardProductFilters'
 import {
@@ -44,6 +46,9 @@ export default function DashboardPage() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [ordering, setOrdering] = useState<ProductFinancialOrdering>('-revenue')
   const [debouncedSearch] = useDebouncedValue(search, 300)
+
+  const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
 
   const periodReady = isFinancialPeriodReady(period)
   const periodParams = periodReady ? toFinancialPeriodParams(period) : {}
@@ -337,6 +342,29 @@ export default function DashboardPage() {
             )}
         </Paper>
       </Stack>
+      )}
+
+      <AIChatDrawer
+        opened={chatOpened}
+        onClose={closeChat}
+        messages={chatMessages}
+        setMessages={setChatMessages}
+      />
+
+      {!chatOpened && (
+        <Affix position={{ bottom: 24, right: 24 }}>
+          <Tooltip label="Ask about your data" position="left" withArrow>
+            <ActionIcon
+              onClick={openChat}
+              size={52}
+              radius="xl"
+              variant="filled"
+              aria-label="AI assistant"
+            >
+              <IconSparkles size={24} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        </Affix>
       )}
     </Stack>
   )
