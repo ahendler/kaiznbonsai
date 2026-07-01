@@ -282,7 +282,17 @@ export default function DashboardPage() {
                             {formatCurrency(product.profit)}
                           </Table.Td>
                           <Table.Td className="w-0 whitespace-nowrap">
-                            <Text size="sm" fw={500}>{formatMarkupPercent(product.markup_on_cost)}</Text>
+                            <Text
+                              size="sm"
+                              fw={500}
+                              c={
+                                product.markup_on_cost !== null && Number(product.markup_on_cost) < 0
+                                  ? 'red'
+                                  : undefined
+                              }
+                            >
+                              {formatMarkupPercent(product.markup_on_cost)}
+                            </Text>
                           </Table.Td>
                           <Table.Td className="w-0 whitespace-nowrap">
                             <Text size="sm" fw={500} mb={2}>{formatMarginPercent(product.margin)}</Text>

@@ -163,6 +163,14 @@ def test_product_financials_markup_null_when_no_cogs(test_user, financial_data):
 
 
 @pytest.mark.django_db
+def test_product_financials_negative_markup_on_loss_product(test_user, loss_product):
+    product = get_products_with_financials(test_user).get(id=loss_product.id)
+    assert product.profit < 0
+    assert product.cogs > 0
+    assert round(product.markup_on_cost, 2) == Decimal('-75.00')
+
+
+@pytest.mark.django_db
 def test_cogs_excludes_cancelled_sales_orders(test_user, financial_data):
     _, _, so1, so2 = financial_data
 
@@ -203,9 +211,15 @@ def test_financials_api_endpoints(auth_client, financial_data):
     p1_data = next(p for p in products if p['sku'] == 'P1')
     assert float(p1_data['revenue']) == 500.00
     assert float(p1_data['profit']) == 300.00
+    assert float(p1_data['margin']) == 60.0
+    assert float(p1_data['markup_on_cost']) == 150.0
     assert float(p1_data['qty_purchased']) == 100.0
     assert float(p1_data['qty_sold']) == 20.0
     assert p1_data['unit_of_measure'] == 'KG'
+
+    p2_data = next(p for p in products if p['sku'] == 'P2')
+    assert float(p2_data['margin']) == 50.0
+    assert float(p2_data['markup_on_cost']) == 100.0
 
 
 @pytest.mark.django_db
@@ -614,6 +628,15 @@ def test_product_financials_api_ordering_by_revenue(auth_client, financial_data)
     results = res.json()['results']
     revenues = [float(p['revenue']) for p in results]
     assert revenues == sorted(revenues, reverse=True)
+
+
+@pytest.mark.django_db
+def test_product_financials_api_ordering_by_markup(auth_client, financial_data):
+    res = auth_client.get(PRODUCT_FINANCIALS_URL, {'ordering': '-markup_on_cost'})
+    assert res.status_code == status.HTTP_200_OK
+    results = res.json()['results']
+    markups = [float(p['markup_on_cost']) for p in results]
+    assert markups == sorted(markups, reverse=True)
 
 
 @pytest.mark.django_db

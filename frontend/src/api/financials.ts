@@ -17,7 +17,13 @@ function periodKeyPart(period: FinancialPeriodParams): FinancialPeriodParams | '
 
 export type MarginBand = 'negative' | 'low' | 'medium' | 'high';
 export type ActivityFilter = 'all' | 'movement' | 'stale';
-export type ProductFinancialOrdering = '-created_at' | '-revenue' | '-profit' | '-margin' | 'name';
+export type ProductFinancialOrdering =
+  | '-created_at'
+  | '-revenue'
+  | '-profit'
+  | '-margin'
+  | '-markup_on_cost'
+  | 'name';
 
 export interface ProductFinancialListFilters {
   from?: string;

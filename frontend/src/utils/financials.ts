@@ -17,15 +17,19 @@ export function getMarginProgressValue(margin: string | number): number | null {
   return Math.min(marginNum, 100)
 }
 
+function formatPercent(value: string | number | null | undefined, nullable = false): string {
+  if (nullable && (value === null || value === undefined || value === '')) {
+    return '—'
+  }
+  return `${Number(value).toFixed(1)}%`
+}
+
 export function formatMarginPercent(margin: string | number): string {
-  return `${Number(margin).toFixed(1)}%`
+  return formatPercent(margin)
 }
 
 export function formatMarkupPercent(markup: string | number | null | undefined): string {
-  if (markup === null || markup === undefined || markup === '') {
-    return '—'
-  }
-  return `${Number(markup).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`
+  return formatPercent(markup, true)
 }
 
 export function formatQuantity(qty: string | number): string {

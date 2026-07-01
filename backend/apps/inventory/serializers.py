@@ -33,7 +33,7 @@ class ProductFinancialSerializer(serializers.ModelSerializer):
     revenue = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     cogs = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     profit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    margin = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    margin = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     markup_on_cost = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True, allow_null=True,
     )
