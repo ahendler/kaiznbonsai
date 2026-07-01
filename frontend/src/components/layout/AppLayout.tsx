@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   AppShell,
   Burger,
@@ -15,17 +16,23 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   IconBoxSeam,
   IconLogout,
-  IconDashboard,
-  IconReceipt,
+  IconHome,
+  IconChartBar,
+  IconTruckDelivery,
+  IconCash,
   IconHistory,
 } from '@tabler/icons-react'
 import { useAuth } from '@/context/AuthContext'
 import { authApi } from '@/api/auth'
+import type { ChatMessage } from '@/api/assistant'
+import AssistantFab from '@/components/assistant/AssistantFab'
 
 const navItems = [
-  { label: 'Dashboard', icon: IconDashboard, path: '/' },
+  { label: 'Home', icon: IconHome, path: '/' },
+  { label: 'Financials', icon: IconChartBar, path: '/financials' },
   { label: 'Products', icon: IconBoxSeam, path: '/inventory/products' },
-  { label: 'Orders', icon: IconReceipt, path: '/orders' },
+  { label: 'Purchases', icon: IconTruckDelivery, path: '/orders/purchases' },
+  { label: 'Sales', icon: IconCash, path: '/orders/sales' },
   { label: 'Stock History', icon: IconHistory, path: '/history' },
 ]
 
@@ -33,11 +40,17 @@ function isNavItemActive(pathname: string, path: string): boolean {
   if (path === '/') {
     return pathname === '/'
   }
-  return pathname.startsWith(path)
+  return pathname === path || pathname.startsWith(`${path}/`)
+}
+
+function showAssistant(pathname: string): boolean {
+  return pathname === '/' || pathname.startsWith('/financials')
 }
 
 export default function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure()
+  const [chatOpened, { open: openChat, close: closeChat }] = useDisclosure(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const navigate = useNavigate()
   const location = useLocation()
   const { dispatch } = useAuth()
@@ -85,6 +98,16 @@ export default function AppLayout() {
           <Outlet />
         </AppShell.Main>
       </AppShell>
+
+      {showAssistant(location.pathname) && (
+        <AssistantFab
+          opened={chatOpened}
+          onOpen={openChat}
+          onClose={closeChat}
+          messages={chatMessages}
+          setMessages={setChatMessages}
+        />
+      )}
 
       <Drawer
         opened={opened}

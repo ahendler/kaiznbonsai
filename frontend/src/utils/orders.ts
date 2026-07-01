@@ -1,5 +1,20 @@
 import type { OrderStatus, StockAllocationStrategy } from '@/api/orders'
 
+export type OrderKind = 'purchases' | 'sales'
+
+export function buildOrderPath(kind: OrderKind, orderId?: number): string {
+  const base = kind === 'sales' ? '/orders/sales' : '/orders/purchases'
+  if (orderId == null) return base
+  return `${base}?orderId=${orderId}`
+}
+
+export function parseOrderId(value: string | null): number | null {
+  if (!value) return null
+  const id = Number.parseInt(value, 10)
+  if (!Number.isFinite(id) || id <= 0) return null
+  return id
+}
+
 export const ALLOCATION_OPTIONS = [
   {
     value: 'FIFO' as const,

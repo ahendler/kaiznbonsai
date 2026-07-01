@@ -5,9 +5,11 @@ import { useAuth } from '@/context/AuthContext'
 import LoginPage from '@/pages/auth/LoginPage'
 import RegisterPage from '@/pages/auth/RegisterPage'
 import AppLayout from '@/components/layout/AppLayout'
-import DashboardPage from '@/pages/dashboard/DashboardPage'
+import HomePage from '@/pages/home/HomePage'
+import FinancialsPage from '@/pages/financials/FinancialsPage'
 import ProductListPage from '@/pages/inventory/ProductListPage'
-import OrdersPage from '@/pages/orders/OrdersPage'
+import PurchaseOrdersPage from '@/pages/orders/PurchaseOrdersPage'
+import SalesOrdersPage from '@/pages/orders/SalesOrdersPage'
 import HistoryPage from '@/pages/history/HistoryPage'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -61,10 +63,15 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<HomePage />} />
+        <Route path="financials" element={<FinancialsPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="inventory/products" element={<ProductListPage />} />
-        <Route path="orders" element={<OrdersPage />} />
+        <Route path="orders">
+          <Route index element={<Navigate to="/orders/purchases" replace />} />
+          <Route path="purchases" element={<PurchaseOrdersPage />} />
+          <Route path="sales" element={<SalesOrdersPage />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
