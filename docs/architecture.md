@@ -32,6 +32,8 @@ Write-side inventory mutations go through `apps/inventory/commands.py::record_mo
 | `SALE` | `confirm_sales_order` | Stock deduction linked to a sales line (see Stock allocation below) |
 | `RETURN` | `cancel_sales_order` | Reverses exact `SALE` rows on the original batches |
 | `ADJUSTMENT` | `StockViewSet.perform_update` | Data-entry typo correction on unconsumed manual batches only |
+| `VOID` | `void_manual_stock_batch` | Removes an unconsumed manual batch; sets `Stock.voided_at` |
+| `RECEIPT_REVERSAL` | `cancel_purchase_order` | Reverses untouched PO receipt; sets `Stock.voided_at` on linked batches |
 
 Movement rows power COGS, financial period aggregates, and the **Stock History** UI. They are exposed read-only via:
 
@@ -57,10 +59,13 @@ PO confirm and manual create both use this pattern. Never set `current_quantity`
 2. `current_quantity == sum(movements.delta)` for that batch.
 3. `SALE` movements are only created by `confirm_sales_order`.
 4. `RETURN` movements are only created by `cancel_sales_order`, reversing exact `SALE` rows.
-5. `initial_quantity` is immutable after create, except typo correction on unconsumed manual batches (`ADJUSTMENT` bumps `initial_quantity` in lockstep).
-6. COGS is derived from `SALE` movements on `CONFIRMED` sales orders only.
-7. `record_movement` is the only code path that changes `current_quantity` after batch creation.
-8. `ADJUSTMENT` is only for unconsumed, non-PO manual batches (serializer eligibility unchanged).
+5. `VOID` movements are only created by `void_manual_stock_batch` on unconsumed, non-PO batches.
+6. `RECEIPT_REVERSAL` movements are only created by `cancel_purchase_order` on untouched PO-linked batches.
+7. `initial_quantity` is immutable after create, except typo correction on unconsumed manual batches (`ADJUSTMENT` bumps `initial_quantity` in lockstep).
+8. COGS is derived from `SALE` movements on `CONFIRMED` sales orders only.
+9. `record_movement` is the only code path that changes `current_quantity` after batch creation.
+10. `ADJUSTMENT` is only for unconsumed, non-PO manual batches (serializer eligibility unchanged).
+11. Voided batches (`voided_at` set) have `current_quantity = 0` and are hidden from the stock drawer by default; movement rows are never deleted.
 
 ### COGS and financials
 
@@ -69,6 +74,8 @@ COGS is the sum of `-delta × stock_batch.unit_cost` over `StockMovement` rows w
 Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SALE` movements (movement-based so multi-batch confirms and period filters stay aligned). Inventory value is `Sum(current_quantity × unit_cost)` on `Stock` — always a **current snapshot**, not period-scoped.
 
 When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
+
+**Qty purchased / qty sold (dashboard):** net movement deltas in the period — `RECEIPT` + `RECEIPT_REVERSAL` for purchases; `SALE` + `RETURN` for sales. Cancellations within the window net to zero without removing ledger rows.
 
 **Per-product percentages** (dashboard product table; API field `margin`):
 
@@ -79,7 +86,7 @@ When a sales order is cancelled, its `SALE` movements stay in the database for a
 
 Gross margin is share of revenue kept after COGS. Markup on cost is profit relative to cost — e.g. 150% markup means profit is 1.5× COGS. Margin-band filters and sort-by-`-margin` use gross margin only.
 
-**Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue, COGS, gross profit, margin, and per-product qty purchased/sold are scoped to `StockMovement.created_at` on `RECEIPT` and confirmed `SALE` rows. Inventory value is unchanged.
+**Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue and COGS are scoped to confirmed `SALE` movements in the window; per-product qty purchased and qty sold net `RECEIPT`/`RECEIPT_REVERSAL` and `SALE`/`RETURN` respectively. Inventory value is unchanged (current snapshot).
 
 Implemented in `apps/inventory/selectors.py` and `apps/inventory/financial_period.py`.
 
@@ -102,11 +109,15 @@ Passed in the body of `POST /api/v1/orders/sales-orders/{id}/confirm/` as `alloc
 
 ### Delete and cancel guards
 
-**Stock batch delete:** blocked when the batch has any `SALE` movement (deleting would CASCADE away financial history and corrupt COGS), or when `current_quantity < initial_quantity`.
+**Stock batch void:** `DELETE /inventory/stocks/{id}/` returns 405 — batches are never deleted. Manual batches are removed via `POST /inventory/stocks/{id}/void/`, which appends a `VOID` movement and sets `voided_at`. Blocked when the batch is PO-linked (cancel the PO instead), already voided, has no remaining quantity, or has any `SALE` history. PO-linked batches cannot be voided from the drawer.
 
-**Order delete:** `DELETE` on `CONFIRMED` purchase or sales orders returns 409 — cancel first so commands can reverse stock and preserve movement integrity.
+**Stock.voided_at:** nullable timestamp set when a batch is voided (manual or PO cancel). `voided_at IS NULL` = active for listing; voided batches are excluded from `GET /inventory/stocks/` unless `?include_voided=true`. Depleted batches (`current_quantity = 0` from sales) remain visible unless voided.
 
-**PO cancel after a cancelled sale:** if stock from a PO was sold and the sale later cancelled, quantity is restored via `RETURN` but `SALE` rows remain. PO cancel is blocked in that case even when on-hand quantity matches the original receipt. **Trade-off:** audit history over PO reversal; a dedicated void flow would be needed to unwind a PO after commercial activity on its batches.
+**Order delete:** `DELETE` on purchase or sales orders returns 409 when the order has any linked `StockMovement` rows (confirmed or cancelled). Draft orders with no movements may still be deleted. Cancel first to append compensating movements and preserve ledger integrity.
+
+**PO cancel after a cancelled sale:** if stock from a PO was sold and the sale later cancelled, quantity is restored via `RETURN` but `SALE` rows remain. PO cancel is blocked in that case even when on-hand quantity matches the original receipt. **Trade-off:** audit history over PO reversal; unwinding a PO after commercial activity on its batches is not supported.
+
+**PO cancel (untouched receipt):** appends `RECEIPT_REVERSAL` per linked batch and sets `voided_at` — the original `RECEIPT` row and `Stock` row are kept for audit.
 
 ### Inventory adjustments
 
@@ -160,7 +171,7 @@ The data model has no `Organization` entity. All user data is isolated at the ro
 
 ### Business logic trade-offs
 
-- **PO-linked batches** cannot have quantity or cost edited manually. Unconsumed manual batches support typo correction through `ADJUSTMENT` movements. Shrinkage on consumed batches is not supported yet.
+- **PO-linked batches** cannot be voided from the drawer or have quantity/cost edited manually — cancel the PO to reverse an untouched receipt via `RECEIPT_REVERSAL`. Unconsumed manual batches support typo correction through `ADJUSTMENT` movements or full removal through `VOID`. Shrinkage on consumed batches is not supported yet.
 - **Sales order cancellation** reverses each `SALE` with a matching `RETURN` on the same batch; `initial_quantity` is never modified.
-- **PO cancellation** is blocked once any batch from that PO has `SALE` history, even if a subsequent sale was cancelled and quantity was restored.
+- **PO cancellation** on untouched receipts voids linked batches via `RECEIPT_REVERSAL`; it is blocked once any batch from that PO has `SALE` history, even if a subsequent sale was cancelled and quantity was restored.
 - **Partial fulfillments** are not supported — order confirmation is all-or-nothing.

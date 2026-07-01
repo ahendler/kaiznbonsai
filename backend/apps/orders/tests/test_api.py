@@ -4,7 +4,7 @@ from decimal import Decimal
 from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.inventory.commands import record_movement
-from apps.inventory.models import MovementReason, Product, Stock
+from apps.inventory.models import MovementReason, Product, Stock, StockMovement
 from apps.orders.constants import StockAllocationStrategy
 from apps.orders.models import PurchaseOrder, SalesOrder, OrderStatus
 
@@ -89,7 +89,27 @@ class TestPurchaseOrderAPI:
 
         response = authenticated_client.delete(f'/api/v1/orders/purchase-orders/{po.id}/')
         assert response.status_code == 409
+        assert 'movement history' in response.data['detail'].lower()
         assert PurchaseOrder.objects.filter(id=po.id).exists()
+
+    def test_delete_cancelled_purchase_order_with_movements_returns_409(
+        self, authenticated_client, product, user,
+    ):
+        po = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        po.items.create(product=product, quantity=100, unit_cost=10.50, lot_code='LOT1')
+        authenticated_client.post(f'/api/v1/orders/purchase-orders/{po.id}/confirm/')
+        authenticated_client.post(f'/api/v1/orders/purchase-orders/{po.id}/cancel/')
+
+        movement_count = StockMovement.objects.filter(purchase_order_item__order=po).count()
+        assert movement_count >= 2
+
+        response = authenticated_client.delete(f'/api/v1/orders/purchase-orders/{po.id}/')
+        assert response.status_code == 409
+        assert PurchaseOrder.objects.filter(id=po.id).exists()
+        assert (
+            StockMovement.objects.filter(purchase_order_item__order=po).count()
+            == movement_count
+        )
 
     def test_create_purchase_order_rejects_empty_items(self, authenticated_client):
         response = authenticated_client.post(
@@ -318,15 +338,25 @@ class TestSalesOrderAPI:
 
         response = authenticated_client.delete(f'/api/v1/orders/sales-orders/{so.id}/')
         assert response.status_code == 409
+        assert 'movement history' in response.data['detail'].lower()
         assert SalesOrder.objects.filter(id=so.id).exists()
 
-    def test_delete_cancelled_sales_order_returns_204(self, authenticated_client, user, product):
+    def test_delete_cancelled_sales_order_with_movements_returns_409(
+        self, authenticated_client, user, product,
+    ):
         make_stock_with_receipt(user, product, 100)
         so = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
         so.items.create(product=product, quantity=50, unit_price=20.00)
         authenticated_client.post(f'/api/v1/orders/sales-orders/{so.id}/confirm/')
         authenticated_client.post(f'/api/v1/orders/sales-orders/{so.id}/cancel/')
 
+        movement_count = StockMovement.objects.filter(sales_order_item__order=so).count()
+        assert movement_count >= 2
+
         response = authenticated_client.delete(f'/api/v1/orders/sales-orders/{so.id}/')
-        assert response.status_code == 204
-        assert not SalesOrder.objects.filter(id=so.id).exists()
+        assert response.status_code == 409
+        assert SalesOrder.objects.filter(id=so.id).exists()
+        assert (
+            StockMovement.objects.filter(sales_order_item__order=so).count()
+            == movement_count
+        )

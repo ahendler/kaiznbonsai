@@ -44,6 +44,8 @@ export interface Stock {
   current_quantity: string // Decimal
   unit_cost: string // Decimal
   best_before: string | null // Date (YYYY-MM-DD)
+  voided_at: string | null
+  is_po_linked: boolean
   created_at: string
   updated_at: string
 }
@@ -130,6 +132,7 @@ export const updateStock = async (id: string, payload: StockUpdatePayload): Prom
   return response.data
 }
 
-export const deleteStock = async (id: string): Promise<void> => {
-  await api.delete(`/inventory/stocks/${id}/`)
+export const voidStock = async (id: string): Promise<Stock> => {
+  const response = await api.post(`/inventory/stocks/${id}/void/`)
+  return response.data
 }

@@ -137,7 +137,7 @@ export default function HistoryPage() {
       <Group gap="sm" align="baseline" mb="lg" wrap="wrap">
         <Title order={2}>Stock History</Title>
         <Text c="dimmed" size="sm">
-          received, sold, returned, and corrected
+          received, sold, returned, voided, and corrected
         </Text>
       </Group>
 
@@ -211,7 +211,7 @@ export default function HistoryPage() {
             <Text c="dimmed" size="sm" ta="center" maw={420}>
               {hasActiveFilters
                 ? 'Try adjusting the period, event type, or search terms.'
-                : 'Confirm purchase or sales orders to see stock movements here.'}
+                : 'Confirm purchase or sales orders, void manual batches, or cancel orders to see stock movements here.'}
             </Text>
           </Stack>
         </Center>
@@ -290,7 +290,8 @@ export default function HistoryPage() {
         icon={<IconInfoCircle size={16} />}
         title="Audit trail"
       >
-        Cancelled sales remain listed for traceability but are excluded from dashboard financials.
+        Cancelled sales and purchase orders remain listed for traceability. Dashboard revenue and COGS
+        exclude cancelled orders; qty purchased and qty sold net reversals within the selected period.
       </Alert>
     </Container>
   )

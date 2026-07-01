@@ -6,6 +6,8 @@ export const MOVEMENT_REASON_OPTIONS = [
   { value: 'SALE' as const, label: 'Sold' },
   { value: 'RETURN' as const, label: 'Sale reversed' },
   { value: 'ADJUSTMENT' as const, label: 'Quantity corrected' },
+  { value: 'VOID' as const, label: 'Batch voided' },
+  { value: 'RECEIPT_REVERSAL' as const, label: 'Receipt reversed' },
 ] satisfies ReadonlyArray<{ value: MovementReason; label: string }>
 
 const MOVEMENT_LABELS: Record<MovementReason, string> = {
@@ -13,6 +15,8 @@ const MOVEMENT_LABELS: Record<MovementReason, string> = {
   SALE: 'Sold',
   RETURN: 'Sale reversed',
   ADJUSTMENT: 'Quantity corrected',
+  VOID: 'Batch voided',
+  RECEIPT_REVERSAL: 'Receipt reversed',
 }
 
 export function getMovementLabel(reason: MovementReason): string {
@@ -48,6 +52,12 @@ export function getMovementReference(movement: StockMovementListItem): string {
   }
   if (movement.reason === 'RECEIPT') {
     return 'Manual entry'
+  }
+  if (movement.reason === 'VOID') {
+    return 'Manual entry'
+  }
+  if (movement.reason === 'RECEIPT_REVERSAL') {
+    return 'Purchase order cancelled'
   }
   return '—'
 }

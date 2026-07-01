@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Sum, DecimalField
 from django.db.models.functions import Coalesce
@@ -12,7 +13,12 @@ from rest_framework.views import APIView
 from rest_framework import generics
 
 from apps.core.pagination import ProductFinancialsCursorPagination, StockMovementCursorPagination
-from apps.inventory.commands import record_movement
+from apps.inventory.commands import (
+    BATCH_ALREADY_VOIDED,
+    BATCH_NO_REMAINING_QTY,
+    record_movement,
+    void_manual_stock_batch,
+)
 from apps.inventory.models import MovementReason, Product, Stock, UnitType
 from apps.inventory.serializers import (
     ProductSerializer,
@@ -126,12 +132,16 @@ class StockViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Strictly isolate data: users can only see their own stock batches.
-        Optionally filter by product ID.
+        Optionally filter by product ID. Voided batches are hidden unless
+        ?include_voided=true is passed.
         """
         queryset = Stock.objects.filter(user=self.request.user).order_by('created_at')
         product_id = self.request.query_params.get('product')
         if product_id:
             queryset = queryset.filter(product_id=product_id)
+        include_voided = self.request.query_params.get('include_voided', '').lower() in ('true', '1')
+        if not include_voided:
+            queryset = queryset.filter(voided_at__isnull=True)
         return queryset
 
     @transaction.atomic
@@ -171,18 +181,32 @@ class StockViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
+        self.get_object()
+        return Response(
+            {
+                'detail': (
+                    'Stock batches cannot be deleted. '
+                    'Use POST /inventory/stocks/{id}/void/ to void a manual batch.'
+                ),
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
         stock = self.get_object()
-        if stock.movements.filter(reason=MovementReason.SALE).exists():
-            return Response(
-                {"detail": "Cannot delete a batch that has been used in a sale."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if stock.current_quantity < stock.initial_quantity:
-            return Response(
-                {"detail": "Cannot delete a partially or fully consumed batch."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return super().destroy(request, *args, **kwargs)
+        try:
+            stock = void_manual_stock_batch(user=request.user, stock_batch=stock)
+        except DjangoValidationError as exc:
+            messages = exc.messages if hasattr(exc, 'messages') else [str(exc)]
+            detail = messages[0] if len(messages) == 1 else messages
+            status_code = status.HTTP_409_CONFLICT
+            if detail in {BATCH_NO_REMAINING_QTY, BATCH_ALREADY_VOIDED}:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return Response({'detail': detail}, status=status_code)
+
+        serializer = self.get_serializer(stock)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def movements(self, request, pk=None):

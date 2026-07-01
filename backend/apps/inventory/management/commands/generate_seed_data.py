@@ -10,7 +10,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.inventory.models import MovementReason, Product, StockMovement, UnitType
+from apps.inventory.commands import record_movement, void_manual_stock_batch
+from apps.inventory.models import MovementReason, Product, Stock, StockMovement, UnitType
 from apps.orders.models import PurchaseOrder, PurchaseOrderItem, SalesOrder, SalesOrderItem
 from apps.orders.commands import (
     cancel_purchase_order,
@@ -49,7 +50,7 @@ class SoLineSpec:
     unit_price: str
 
 
-PoAction = Literal['confirm', 'cancel', 'draft']
+PoAction = Literal['confirm', 'cancel', 'confirm_cancel', 'draft']
 SoAction = Literal['confirm', 'cancel', 'draft']
 ActivityWhen = tuple[int, int]  # (months_ago, day_of_month) — 0 = current month
 PoSeedEntry = tuple[str, list[PoLineSpec], PoAction] | tuple[str, list[PoLineSpec], PoAction, ActivityWhen]
@@ -104,6 +105,7 @@ class Command(BaseCommand):
 
         self._seed_purchase_orders(user, catalog, today)
         self._seed_sales_orders(user, catalog)
+        self._seed_ledger_void_examples(user, catalog)
 
         return catalog
 
@@ -246,11 +248,12 @@ class Command(BaseCommand):
                 (2, 15),
             ),
             (
-                'PO-009 — Pacific Alt Dairy Co. (supplier backout)',
+                'PO-009 — Pacific Alt Dairy Co. (supplier backout after receipt)',
                 [
-                    PoLineSpec('DAIR-OAT-01', '1000', '1.65', 60),
+                    PoLineSpec('DAIR-OAT-01', '100', '1.65', 60, 'OAT-BACKOUT-2409'),
                 ],
-                'cancel',
+                'confirm_cancel',
+                (1, 3),
             ),
             (
                 'PO-010 — Pacific Alt Dairy Co. (alternate oat shipment)',
@@ -345,10 +348,38 @@ class Command(BaseCommand):
                 confirm_purchase_order(po)
                 if activity_when is not None:
                     self._backdate_purchase_order_movements(po, activity_when)
+            elif action == 'confirm_cancel':
+                confirm_purchase_order(po)
+                cancel_purchase_order(po)
+                if activity_when is not None:
+                    self._backdate_purchase_order_movements(po, activity_when)
             elif action == 'cancel':
                 cancel_purchase_order(po)
 
         self.stdout.write(f'Processed {len(purchase_orders)} purchase orders')
+
+    def _seed_ledger_void_examples(self, user, catalog: dict[str, Product]) -> None:
+        """Manual batch void for Stock History demos (VOID movement + voided_at)."""
+        product = catalog['SUP-PRO-01']
+        stock = Stock.objects.create(
+            user=user,
+            product=product,
+            lot_code='PRO-MANUAL-VOID',
+            initial_quantity=Decimal('5'),
+            current_quantity=Decimal('0'),
+            unit_cost=Decimal('18.50'),
+        )
+        record_movement(
+            user=user,
+            stock_batch=stock,
+            delta=Decimal('5'),
+            reason=MovementReason.RECEIPT,
+        )
+        void_manual_stock_batch(user=user, stock_batch=stock)
+
+        when = self._activity_timestamp(0, 18)
+        StockMovement.objects.filter(stock_batch=stock).update(created_at=when)
+        self.stdout.write('Seeded manual batch void example (SUP-PRO-01)')
 
     def _seed_sales_orders(self, user, catalog: dict[str, Product]):
         sales_orders: list[SoSeedEntry] = [
@@ -579,7 +610,7 @@ class Command(BaseCommand):
         when = self._activity_timestamp(*activity_when)
         StockMovement.objects.filter(
             purchase_order_item__order=order,
-            reason=MovementReason.RECEIPT,
+            reason__in=[MovementReason.RECEIPT, MovementReason.RECEIPT_REVERSAL],
         ).update(created_at=when)
 
     def _backdate_sales_order_movements(self, order: SalesOrder, activity_when: ActivityWhen) -> None:
@@ -650,5 +681,6 @@ class Command(BaseCommand):
         self.stdout.write('  • Loss-leader SKU: Coconut Sugar (sold below cost in SO-019)')
         self.stdout.write('  • Sold-out SKU: Cinnamon (filter "Out of stock only" to verify)')
         self.stdout.write('  • Draft PO/SO and cancelled orders for workflow demos')
+        self.stdout.write('  • Stock History: filter “Batch voided” (manual SUP-PRO-01) or “Receipt reversed” (PO-009)')
         self.stdout.write('  • Financial period presets: activity spread across ~3 months (try This month / Last month on dashboard)')
         self.stdout.write('')

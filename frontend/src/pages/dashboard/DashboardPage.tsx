@@ -244,8 +244,20 @@ export default function DashboardPage() {
                     <Table.Tr>
                       <Table.Th>Product</Table.Th>
                       <Table.Th>SKU</Table.Th>
-                      <Table.Th>Qty Purchased</Table.Th>
-                      <Table.Th>Qty Sold</Table.Th>
+                      <Table.Th className="w-0 whitespace-nowrap">
+                        <MetricColumnHeader
+                          label="Qty Purchased"
+                          formula="Receipts + receipt reversals"
+                          description="Net units received in this period. Cancelled purchase orders reduce this total."
+                        />
+                      </Table.Th>
+                      <Table.Th className="w-0 whitespace-nowrap">
+                        <MetricColumnHeader
+                          label="Qty Sold"
+                          formula="Sales + sale returns"
+                          description="Net units sold in this period. Cancelled sales orders reduce this total."
+                        />
+                      </Table.Th>
                       <Table.Th>Revenue</Table.Th>
                       <Table.Th>COGS</Table.Th>
                       <Table.Th>Profit</Table.Th>

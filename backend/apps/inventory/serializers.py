@@ -52,18 +52,23 @@ class StockSerializer(serializers.ModelSerializer):
     # Helpful read-only fields for the frontend so it doesn't have to make extra API calls
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_sku = serializers.CharField(source='product.sku', read_only=True)
+    is_po_linked = serializers.SerializerMethodField()
 
     class Meta:
         model = Stock
         fields = [
-            'id', 'product', 'product_name', 'product_sku', 'lot_code', 
-            'best_before', 'initial_quantity', 'current_quantity', 
-            'unit_cost', 'created_at', 'updated_at'
+            'id', 'product', 'product_name', 'product_sku', 'lot_code',
+            'best_before', 'initial_quantity', 'current_quantity',
+            'unit_cost', 'voided_at', 'is_po_linked',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'product_name', 'product_sku',
-            'created_at', 'updated_at'
+            'id', 'product_name', 'product_sku', 'voided_at', 'is_po_linked',
+            'created_at', 'updated_at',
         ]
+
+    def get_is_po_linked(self, obj):
+        return bool(obj.purchase_order_item_id)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

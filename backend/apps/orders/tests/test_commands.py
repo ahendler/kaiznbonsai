@@ -79,12 +79,16 @@ class TestPurchaseOrders:
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]
         po = create_purchase_order(user, items_data)
         confirm_purchase_order(po)
-        
-        # Cancel untouched
+
         cancel_purchase_order(po)
         po.refresh_from_db()
         assert po.status == OrderStatus.CANCELLED
-        assert Stock.objects.count() == 0
+
+        stock = Stock.objects.get(purchase_order_item__order=po)
+        assert stock.voided_at is not None
+        assert stock.current_quantity == Decimal('0')
+        assert stock.movements.filter(reason=MovementReason.RECEIPT).count() == 1
+        assert stock.movements.filter(reason=MovementReason.RECEIPT_REVERSAL).count() == 1
         
     def test_cannot_cancel_consumed_purchase_order(self, user, product):
         items_data = [{'product_id': product.id, 'quantity': 100, 'unit_cost': 10.50}]

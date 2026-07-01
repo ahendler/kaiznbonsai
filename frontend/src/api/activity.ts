@@ -2,7 +2,13 @@ import api from './client'
 import type { PaginatedResponse } from './inventory'
 import type { FinancialPeriodParams } from '@/utils/financialPeriod'
 
-export type MovementReason = 'RECEIPT' | 'SALE' | 'RETURN' | 'ADJUSTMENT'
+export type MovementReason =
+  | 'RECEIPT'
+  | 'SALE'
+  | 'RETURN'
+  | 'ADJUSTMENT'
+  | 'VOID'
+  | 'RECEIPT_REVERSAL'
 
 export interface MovementOrderRef {
   id: number

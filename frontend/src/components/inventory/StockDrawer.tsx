@@ -20,7 +20,7 @@ import { useForm, isNotEmpty } from '@mantine/form'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
 import { IconTrash, IconEdit, IconCheck, IconX, IconHistory } from '@tabler/icons-react'
-import { listStocks, createStock, updateStock, deleteStock } from '@/api/inventory'
+import { listStocks, createStock, updateStock, voidStock } from '@/api/inventory'
 import type { StockUpdatePayload } from '@/api/inventory'
 import { invalidateFinancials } from '@/api/financials'
 import { getApiErrorMessage, getFormErrorsFromApi, getAxiosResponseData } from '@/api/errors'
@@ -96,10 +96,10 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
     }
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteStock(id),
+  const voidMutation = useMutation({
+    mutationFn: (id: string) => voidStock(id),
     onSuccess: () => {
-      notifications.show({ title: 'Success', message: 'Batch removed successfully', color: 'green' })
+      notifications.show({ title: 'Success', message: 'Batch voided successfully', color: 'green' })
       queryClient.invalidateQueries({ queryKey: ['stocks', productId] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['stock-batch-movements'] })
@@ -107,14 +107,14 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       invalidateFinancials(queryClient)
     },
     onError: (error) => {
-      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to delete batch.'), color: 'red' })
+      notifications.show({ title: 'Error', message: getApiErrorMessage(error, 'Failed to void batch.'), color: 'red' })
     }
   })
 
   // Edit State
   const [editingStockId, setEditingStockId] = useState<string | null>(null)
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null)
-  const [batchToDelete, setBatchToDelete] = useState<string | null>(null)
+  const [batchToVoid, setBatchToVoid] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{
     lot_code: string
     initial_quantity: number | ''
@@ -357,8 +357,21 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                               >
                                 <IconEdit size={16} />
                               </ActionIcon>
-                              {isConsumed ? (
-                                <Tooltip label="Cannot delete a partially or fully consumed batch">
+                              {stock.is_po_linked ? (
+                                <Tooltip label="Cancel the purchase order to reverse receipt.">
+                                  <Box display="inline-block">
+                                    <ActionIcon
+                                      color="gray"
+                                      variant="subtle"
+                                      disabled
+                                      style={{ pointerEvents: 'none' }}
+                                    >
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Box>
+                                </Tooltip>
+                              ) : isConsumed ? (
+                                <Tooltip label="Cannot void a partially or fully consumed batch">
                                   <Box display="inline-block">
                                     <ActionIcon
                                       color="gray"
@@ -371,11 +384,11 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
                                   </Box>
                                 </Tooltip>
                               ) : (
-                                <Tooltip label="Remove batch">
+                                <Tooltip label="Void batch">
                                   <ActionIcon
                                     color="red"
                                     variant="subtle"
-                                    onClick={() => setBatchToDelete(stock.id)}
+                                    onClick={() => setBatchToVoid(stock.id)}
                                   >
                                     <IconTrash size={16} />
                                   </ActionIcon>
@@ -410,27 +423,29 @@ export default function StockDrawer({ opened, onClose, productId, productName }:
       </Stack>
 
       <Modal
-        opened={!!batchToDelete}
-        onClose={() => setBatchToDelete(null)}
-        title="Remove stock batch"
+        opened={!!batchToVoid}
+        onClose={() => setBatchToVoid(null)}
+        title="Void stock batch"
         centered
       >
         <Stack gap="md">
-          <Text size="sm">Are you sure you want to remove this batch? This cannot be undone.</Text>
+          <Text size="sm">
+            This voids the batch and records the removal in stock history. It cannot be undone.
+          </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setBatchToDelete(null)}>Cancel</Button>
+            <Button variant="default" onClick={() => setBatchToVoid(null)}>Cancel</Button>
             <Button
               color="red"
-              loading={deleteMutation.isPending}
+              loading={voidMutation.isPending}
               onClick={() => {
-                if (batchToDelete) {
-                  deleteMutation.mutate(batchToDelete, {
-                    onSuccess: () => setBatchToDelete(null),
+                if (batchToVoid) {
+                  voidMutation.mutate(batchToVoid, {
+                    onSuccess: () => setBatchToVoid(null),
                   })
                 }
               }}
             >
-              Remove batch
+              Void batch
             </Button>
           </Group>
         </Stack>
