@@ -153,9 +153,26 @@ Natural-language Q&A on the dashboard, backed by Claude Sonnet 4.6 with adaptive
 
 **Configuration:** `ANTHROPIC_API_KEY` (server-side only). Missing key does not crash startup; the chat endpoint returns 503 at call time.
 
-**Frontend:** `AIChatDrawer` on `DashboardPage` — FAB opens a right-side drawer; message history is held in React state (not persisted across reloads). Cap at 20 messages sent to the backend per turn.
+**Frontend:** `AssistantFab` in `AppLayout` — FAB + `AIChatDrawer` on **Home** (`/`) and **Financials** (`/financials`). Chat history is lifted to layout state so it persists when switching between those pages. Not persisted across reloads. Cap at 20 messages sent to the backend per turn.
 
 Implemented in `apps/assistant/`. See [`docs/phases/phase-31-ai-chat-assistant.md`](phases/phase-31-ai-chat-assistant.md).
+
+## Frontend application shell
+
+Authenticated routes live under `AppLayout` (burger-drawer nav). No backend routes — client-side React Router only.
+
+| Path | Page | Purpose |
+|------|------|---------|
+| `/` | `HomePage` | Period KPI snapshot, needs-attention cards, recent stock movements |
+| `/financials` | `FinancialsPage` | Period-scoped P&L summary + paginated product performance table |
+| `/inventory/products` | `ProductListPage` | Product catalog; `?stock=out_of_stock` pre-filters stock level |
+| `/orders/purchases` | `PurchaseOrdersPage` | Purchase order list; `?orderId=` opens detail modal |
+| `/orders/sales` | `SalesOrdersPage` | Sales order list; `?orderId=` opens detail modal |
+| `/history` | `HistoryPage` | Stock movement audit trail |
+
+`/orders` redirects to `/orders/purchases`. Order deep links are built via `buildOrderPath()` in `frontend/src/utils/orders.ts` (used by History, batch activity, and Home widgets).
+
+Nav: Home, Financials, Products, Purchases, Sales, Stock History. See [`docs/phases/phase-34-home-and-nav.md`](phases/phase-34-home-and-nav.md).
 
 ## Test Database: Always Postgres
 
