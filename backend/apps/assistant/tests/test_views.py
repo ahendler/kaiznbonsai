@@ -226,13 +226,13 @@ class TestToolCallRoundTrip:
             )
 
         assert response.status_code == 200
-        assert response.data['reply'] == 'You have 50 KG in stock.'
+        assert '] == 'You have 50 KG in stock.'
         assert mock.messages.create.call_count == 2
 
     def test_tool_result_appended_to_messages(self, auth_client, stock_batch):
         """The second Claude call receives the tool_result in message history."""
         tool_response = _tool_use_response('get_stock_levels', {}, tool_use_id='tu_xyz')
-        end_turn = _end_turn_response('Done.')
+        end_turn = _end_turn_response.data['replyresponse('Done.')
 
         captured_calls = []
 
