@@ -81,7 +81,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         Query params:
         - search: icontains match on name, sku, description (SearchFilter)
-        - unit_of_measure: exact match (KG, G, L, ML, UNIT)
+        - unit_of_measure: single value or comma-separated list (KG, G, L, ML, UNIT)
         - in_stock: true | false — filter by total_stock > 0 or == 0
         """
         queryset = Product.objects.filter(user=self.request.user).annotate(
@@ -98,8 +98,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         )
 
         unit = self.request.query_params.get('unit_of_measure')
-        if unit and unit in VALID_UNIT_VALUES:
-            queryset = queryset.filter(unit_of_measure=unit)
+        if unit:
+            units = {
+                part.strip().upper()
+                for part in unit.split(',')
+                if part.strip() in VALID_UNIT_VALUES
+            }
+            if units:
+                queryset = queryset.filter(unit_of_measure__in=units)
 
         in_stock = self.request.query_params.get('in_stock')
         if in_stock is not None:

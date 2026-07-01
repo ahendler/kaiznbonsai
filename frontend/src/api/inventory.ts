@@ -34,7 +34,7 @@ export type ProductUpdatePayload = Partial<ProductCreatePayload>
 
 export interface ProductListFilters {
   search?: string
-  unit_of_measure?: Product['unit_of_measure']
+  unit_of_measure?: Product['unit_of_measure'][]
   in_stock?: boolean
 }
 
@@ -85,8 +85,8 @@ export const listProducts = async (
   if (search) {
     params.search = search
   }
-  if (filters.unit_of_measure) {
-    params.unit_of_measure = filters.unit_of_measure
+  if (filters.unit_of_measure?.length) {
+    params.unit_of_measure = filters.unit_of_measure.join(',')
   }
   if (filters.in_stock === true) {
     params.in_stock = 'true'

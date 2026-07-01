@@ -166,6 +166,16 @@ class TestProductListFilters:
         assert len(r.data['results']) == 1
         assert r.data['results'][0]['name'] == 'Juice'
 
+    def test_filter_by_multiple_units_of_measure(self, client_a, user_a):
+        Product.objects.create(user=user_a, name='Water', sku='H2O-1', unit_of_measure='L')
+        Product.objects.create(user=user_a, name='Syrup', sku='SYP-1', unit_of_measure='ML')
+        Product.objects.create(user=user_a, name='Flour', sku='FL-2', unit_of_measure='KG')
+
+        r = client_a.get(PRODUCTS_URL, {'unit_of_measure': 'L,ML'})
+        assert r.status_code == status.HTTP_200_OK
+        names = {p['name'] for p in r.data['results']}
+        assert names == {'Water', 'Syrup'}
+
     def test_filter_in_stock_excludes_zero_stock(self, client_a, user_a):
         stocked = Product.objects.create(user=user_a, name='Stocked', sku='ST-1', unit_of_measure='UNIT')
         Product.objects.create(user=user_a, name='Empty', sku='EM-1', unit_of_measure='UNIT')

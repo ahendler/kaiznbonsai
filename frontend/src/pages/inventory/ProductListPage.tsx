@@ -16,6 +16,9 @@ import {
   Modal,
   TextInput,
   Select,
+  Popover,
+  Checkbox,
+  Input,
 } from '@mantine/core'
 import type { TextProps } from '@mantine/core'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +31,7 @@ import {
   IconCopy,
   IconCheck,
   IconSearch,
+  IconChevronDown,
 } from '@tabler/icons-react'
 import { listProducts, deleteProduct } from '@/api/inventory'
 import type { Product, ProductListFilters } from '@/api/inventory'
@@ -42,6 +46,18 @@ const UNIT_FILTER_OPTIONS = [
   { value: 'ML', label: 'Milliliter (mL)' },
   { value: 'UNIT', label: 'Unit' },
 ] as const
+
+type UnitOfMeasure = Product['unit_of_measure']
+
+function unitFilterButtonLabel(selected: UnitOfMeasure[]): string {
+  if (selected.length === 0) {
+    return 'All units'
+  }
+  if (selected.length === 1) {
+    return UNIT_FILTER_OPTIONS.find((option) => option.value === selected[0])?.label ?? selected[0]
+  }
+  return `${selected.length} units`
+}
 
 type StockFilter = 'all' | 'in_stock' | 'out_of_stock'
 
@@ -119,13 +135,13 @@ const TruncatedTextWithTooltip = ({
 
 export default function ProductListPage() {
   const [search, setSearch] = useState('')
-  const [unitFilter, setUnitFilter] = useState<Product['unit_of_measure'] | null>(null)
+  const [unitFilters, setUnitFilters] = useState<UnitOfMeasure[]>([])
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [debouncedSearch] = useDebouncedValue(search, 300)
 
   const listFilters: ProductListFilters = {
     search: debouncedSearch,
-    ...(unitFilter ? { unit_of_measure: unitFilter } : {}),
+    ...(unitFilters.length > 0 ? { unit_of_measure: unitFilters } : {}),
     ...(stockFilter === 'in_stock' ? { in_stock: true } : {}),
     ...(stockFilter === 'out_of_stock' ? { in_stock: false } : {}),
   }
@@ -200,7 +216,7 @@ export default function ProductListPage() {
   }, [entry?.isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const products = data?.pages.flatMap((page) => page.results) ?? []
-  const hasActiveFilters = Boolean(debouncedSearch || unitFilter || stockFilter !== 'all')
+  const hasActiveFilters = Boolean(debouncedSearch || unitFilters.length > 0 || stockFilter !== 'all')
 
   return (
     <Container size="xl" p={0}>
@@ -223,14 +239,48 @@ export default function ProductListPage() {
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
-        <Select
-          className="w-[180px]"
-          placeholder="All units"
-          clearable
-          data={[...UNIT_FILTER_OPTIONS]}
-          value={unitFilter}
-          onChange={(value) => setUnitFilter(value as Product['unit_of_measure'] | null)}
-        />
+        <Popover width={220} position="bottom-start" withArrow shadow="md">
+          <Popover.Target>
+            <Input
+              component="button"
+              type="button"
+              pointer
+              className="w-[180px]"
+              rightSection={<IconChevronDown size={16} stroke={1.5} />}
+              rightSectionPointerEvents="none"
+            >
+              <Text size="sm" truncate>
+                {unitFilterButtonLabel(unitFilters)}
+              </Text>
+            </Input>
+          </Popover.Target>
+          <Popover.Dropdown>
+            <Checkbox.Group
+              value={unitFilters}
+              onChange={(value) => setUnitFilters(value as UnitOfMeasure[])}
+            >
+              <Stack gap="xs">
+                {UNIT_FILTER_OPTIONS.map((option) => (
+                  <Checkbox
+                    key={option.value}
+                    value={option.value}
+                    label={option.label}
+                  />
+                ))}
+              </Stack>
+            </Checkbox.Group>
+            {unitFilters.length > 0 && (
+              <Button
+                variant="subtle"
+                size="compact-xs"
+                mt="sm"
+                onClick={() => setUnitFilters([])}
+              >
+                Clear units
+              </Button>
+            )}
+          </Popover.Dropdown>
+        </Popover>
         <Select
           className="w-[200px]"
           data={[...STOCK_FILTER_OPTIONS]}
