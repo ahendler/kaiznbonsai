@@ -125,7 +125,6 @@ Enforcement is layered:
 | **API writes** | Commands validate that referenced products and batches belong to the acting user before creating order lines or movements. |
 | **Assistant** | Chat tools call the same selector layer; no cross-user reads. |
 
-This matches the product scope: one brand operator per login. A future **organization** model (shared workspaces, roles) would sit above `User` without changing the ledger design below it.
 
 ---
 

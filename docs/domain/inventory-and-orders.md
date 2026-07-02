@@ -10,22 +10,11 @@ System overview: [Architecture](../architecture.md).
 
 A **product** is a catalog entry: name, description, SKU, and unit of measure.
 
-| Unit code | Meaning |
-|-----------|---------|
-| `KG` | Kilogram |
-| `G` | Gram |
-| `L` | Liter |
-| `ML` | Milliliter |
-| `UNIT` | Unit (count) |
-
 - SKU is unique **per user**, not globally.
-- Units label quantities; the app does not convert between units (e.g. `KG` ↔ `G`).
 
 ### Catalog retention
 
-A product can be deleted only while it has **no stock batch history**. Once any batch exists — including batches fully sold through — the product row is kept so movements, COGS, and lot traceability stay intact. This is deliberate for F&B audit requirements: the catalog reflects SKUs that have ever moved through inventory, not just SKUs currently on hand.
-
-To retire a SKU from active use, stop creating new orders for it; historical batches and movements remain queryable in Stock History and financials.
+A product can be deleted only while it has **no stock batch history**. Once any batch exists - including batches fully sold through - the product row is kept so movements, COGS, and lot traceability stay intact. This is for F&B audit requirements - the catalog reflects SKUs that have ever moved through inventory, not just SKUs currently on hand.
 
 ---
 
