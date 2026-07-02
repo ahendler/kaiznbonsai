@@ -2,24 +2,27 @@ import { useState } from 'react'
 import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Tooltip, Box } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCheck, IconX } from '@tabler/icons-react'
-import { useDisclosure } from '@mantine/hooks'
 import { useSalesOrders, useConfirmSalesOrder, useCancelSalesOrder } from '@/api/orders'
-import type { SalesOrder, StockAllocationStrategy } from '@/api/orders'
+import type { OrderListFilters, SalesOrder, StockAllocationStrategy } from '@/api/orders'
 import { getApiErrorMessage } from '@/api/errors'
-import { DEFAULT_ALLOCATION_STRATEGY, formatOrderMoney, getSalesOrderCancelDescription, getSalesOrderCancelTooltip, orderStatusColor, sumLineTotals } from '@/utils/orders'
+import { DEFAULT_ALLOCATION_STRATEGY, formatOrderMoney, getSalesOrderCancelDescription, getSalesOrderCancelTooltip, orderStatusColor, sumLineTotals, type OrderStatusFilter } from '@/utils/orders'
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
 import { OrderTableTitleCell, ORDER_NAME_COLUMN_MAX_WIDTH } from '@/components/orders/OrderTableTitleCell'
-import { SalesOrderDrawer } from '@/components/orders/SalesOrderDrawer'
 
 interface SalesOrderTableProps {
+  listFilters: OrderListFilters
+  statusFilter: OrderStatusFilter
   onViewOrder?: (order: SalesOrder) => void
 }
 
-export function SalesOrderTable({ onViewOrder }: SalesOrderTableProps) {
-  const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useSalesOrders()
+export function SalesOrderTable({
+  listFilters,
+  statusFilter,
+  onViewOrder,
+}: SalesOrderTableProps) {
+  const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useSalesOrders(listFilters)
   const confirmMutation = useConfirmSalesOrder()
   const cancelMutation = useCancelSalesOrder()
-  const [opened, { open, close }] = useDisclosure(false)
   const [actionOrder, setActionOrder] = useState<{
     id: number
     action: 'confirm' | 'cancel'
@@ -28,6 +31,7 @@ export function SalesOrderTable({ onViewOrder }: SalesOrderTableProps) {
   const [allocationStrategy, setAllocationStrategy] = useState<StockAllocationStrategy>(DEFAULT_ALLOCATION_STRATEGY)
 
   const orders = ordersData?.pages.flatMap(page => page.results) || []
+  const hasStatusFilter = statusFilter !== 'all'
 
   if (isLoading) return <Center p="xl"><Loader /></Center>
 
@@ -129,11 +133,6 @@ export function SalesOrderTable({ onViewOrder }: SalesOrderTableProps) {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
-        <Text size="lg" fw={500}>Outbound Shipments</Text>
-        <Button color="blue" onClick={open}>Create Sales Order</Button>
-      </Group>
-
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -146,7 +145,21 @@ export function SalesOrderTable({ onViewOrder }: SalesOrderTableProps) {
             <Table.Th ta="center">Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
-        <Table.Tbody>{rows?.length ? rows : <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" ta="center">No sales orders found.</Text></Table.Td></Table.Tr>}</Table.Tbody>
+        <Table.Tbody>
+          {rows?.length ? (
+            rows
+          ) : (
+            <Table.Tr>
+              <Table.Td colSpan={7}>
+                <Text c="dimmed" ta="center">
+                  {hasStatusFilter
+                    ? 'No sales orders match your status filter.'
+                    : 'No sales orders found.'}
+                </Text>
+              </Table.Td>
+            </Table.Tr>
+          )}
+        </Table.Tbody>
       </Table>
 
       {hasNextPage && (
@@ -156,8 +169,6 @@ export function SalesOrderTable({ onViewOrder }: SalesOrderTableProps) {
           </Button>
         </Center>
       )}
-
-      <SalesOrderDrawer opened={opened} onClose={close} />
 
       <OrderActionConfirmModal
         opened={!!actionOrder}

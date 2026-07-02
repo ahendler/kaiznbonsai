@@ -149,6 +149,11 @@ class BackendStack(Stack):
                     value=os.environ.get("ANTHROPIC_API_KEY", ""),
                 ),
                 elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
+                    namespace="aws:elasticbeanstalk:application:environment",
+                    option_name="ALLOWED_HOSTS",
+                    value=_require_env("ALLOWED_HOSTS"),
+                ),
+                elasticbeanstalk.CfnEnvironment.OptionSettingProperty(
                     namespace="aws:elb:healthcheck",
                     option_name="Target",
                     value="HTTP:80/admin/login/",

@@ -11,13 +11,13 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core'
 import { IconHistory, IconInfoCircle, IconSearch } from '@tabler/icons-react'
 import { useDebouncedValue, useIntersection } from '@mantine/hooks'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import FinancialPeriodFilter from '@/components/dashboard/FinancialPeriodFilter'
+import { PageTitle } from '@/components/layout/PageTitle'
 import OrderReferenceCell from '@/components/orders/OrderReferenceCell'
 import {
   listStockMovements,
@@ -134,12 +134,11 @@ export default function HistoryPage() {
 
   return (
     <Container size="xl" p={0}>
-      <Group gap="sm" align="baseline" mb="lg" wrap="wrap">
-        <Title order={2}>Stock History</Title>
-        <Text c="dimmed" size="sm">
-          received, sold, returned, voided, and corrected
-        </Text>
-      </Group>
+      <PageTitle
+        title="Stock History"
+        subtitle="received, sold, returned, voided, and corrected"
+        mb="lg"
+      />
 
       <Stack gap="md" mb="md">
         <Group align="flex-end" wrap="wrap" gap="md">

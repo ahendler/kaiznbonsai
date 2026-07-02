@@ -1,6 +1,6 @@
 # KaiznBonsai — AWS Infrastructure
 
-Infrastructure-as-code for deploying KaiznBonsai to AWS (CDK, Python). Application design decisions: [`docs/architecture.md`](../docs/architecture.md).
+Infrastructure-as-code for deploying KaiznBonsai to AWS (CDK, Python). Application design: [`docs/architecture.md`](../docs/architecture.md).
 
 ## Topology
 
@@ -18,7 +18,7 @@ graph TD
 
     subgraph EB["Elastic Beanstalk — Docker"]
         Django["Django + Gunicorn<br/>(ECR image)"]
-        PG["PostgreSQL 15<br/>(container)"]
+        PG["PostgreSQL<br/>(container)"]
     end
 
     ECR["ECR<br/>kaiznbonsai-backend"]
@@ -44,11 +44,15 @@ graph TD
 | Registry | ECR | `kaiznbonsai-backend` image |
 | EB bundles | S3 | Application version manifests (compose zip) |
 
-Postgres runs on the same EB instance as Django (not RDS). See [`docs/architecture.md`](../docs/architecture.md#infrastructure--database-deployment).
+Postgres runs on the same EB instance as Django (not RDS). See [`docs/architecture.md`](../docs/architecture.md#known-compromises).
 
 ## Configuration
 
 Production EB environment variables are set at **`cdk deploy`** time from `infrastructure/.env` (template: `.env.example`). `backend_stack.py` reads that file and writes values into the EB environment.
+
+| Variable | Purpose |
+|----------|---------|
+| `ALLOWED_HOSTS` | Comma-separated Django host allowlist. Include the CloudFront distribution hostname and `.elasticbeanstalk.com` so ELB health checks succeed. |
 
 ## Stacks
 

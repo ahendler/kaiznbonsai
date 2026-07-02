@@ -1,214 +1,218 @@
-# Architectural Decisions and Considerations
+# Architecture
 
-Technical and architectural choices for the KaiznBonsai inventory management application.
+KaiznBonsai is an inventory management app for Food & Beverage CPG brands. Users register, manage a product catalog, track stock in traceable batches, record purchase and sales orders, and view financial performance.
 
-## Email as Login Credential
-
-`User.USERNAME_FIELD = "email"`. Business-facing SaaS products authenticate with email, not an arbitrary username. `username` is retained because `AbstractUser` requires it internally (e.g. `createsuperuser`), but it is auto-set to equal the email on registration and is never exposed through the API.
-
-## App Namespace: `apps/`
-
-All Django apps live under `backend/apps/` (e.g. `apps.accounts`, `apps.inventory`, `apps.orders`). This prevents namespace collisions with third-party packages and makes it immediately clear what is project code vs. installed library. The `AppConfig.name` uses the full dotted path (`apps.accounts`), while the Django `app_label` remains the short name (`accounts`) for migrations.
-
-## API Versioning: `/api/v1/`
-
-All API routes are prefixed with `/api/v1/`. Established upfront to avoid breaking the frontend or external integrations when a v2 surface is needed.
-
-## CQRS Lite Pattern
-
-Business logic is separated using a Command Query Responsibility Segregation (CQRS) Lite pattern. State-mutating logic (order confirmation, cancellation, stock adjustment) lives in `apps/<domain>/commands.py` as plain Python functions. Complex data retrieval lives in `apps/<domain>/selectors.py`. Views are thin orchestrators: authenticate, parse request data, call commands/selectors, serialize and return the response.
-
-**Why:** Splitting reads and writes clarifies side-effects. These functions are callable from views, management commands, and tests without HTTP mocking.
-
-Write-side inventory mutations go through `apps/inventory/commands.py::record_movement()` — the single writer of `current_quantity` after batch creation.
-
-## Stock Movement Ledger
-
-`StockMovement` (`apps/inventory/models.py`) is an append-only ledger of quantity changes per batch. `Stock.current_quantity` is a **cache** updated only via `record_movement()`.
-
-| Reason | Created by | Purpose |
-|--------|------------|---------|
-| `RECEIPT` | PO confirm, manual stock create | Opening quantity when a batch is introduced |
-| `SALE` | `confirm_sales_order` | Stock deduction linked to a sales line (see Stock allocation below) |
-| `RETURN` | `cancel_sales_order` | Reverses exact `SALE` rows on the original batches |
-| `ADJUSTMENT` | `StockViewSet.perform_update` | Data-entry typo correction on unconsumed manual batches only |
-| `VOID` | `void_manual_stock_batch` | Removes an unconsumed manual batch; sets `Stock.voided_at` |
-| `RECEIPT_REVERSAL` | `cancel_purchase_order` | Reverses untouched PO receipt; sets `Stock.voided_at` on linked batches |
-
-Movement rows power COGS, financial period aggregates, and the **Stock History** UI. They are exposed read-only via:
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v1/inventory/movements/` | Tenant-wide ledger; cursor-paginated; filterable by `reason`, `product`, `stock_batch`, `from`/`to`, `search` |
-| `GET /api/v1/inventory/stocks/{id}/movements/` | Same serializer, scoped to one batch (stock drawer) |
-
-Writes still go only through `record_movement()` in commands — never via these list endpoints.
-
-### Batch creation
-
-Every stock entry path follows the same pattern:
-
-1. Create `Stock` with `initial_quantity = X`, `current_quantity = 0`
-2. `record_movement(delta=+X, reason=RECEIPT)`
-
-PO confirm and manual create both use this pattern. Never set `current_quantity` to the receipt amount on create and then call `record_movement(+X)` — that double-counts.
-
-### Invariants
-
-1. Every batch has one opening `RECEIPT` movement equal to `initial_quantity`.
-2. `current_quantity == sum(movements.delta)` for that batch.
-3. `SALE` movements are only created by `confirm_sales_order`.
-4. `RETURN` movements are only created by `cancel_sales_order`, reversing exact `SALE` rows.
-5. `VOID` movements are only created by `void_manual_stock_batch` on unconsumed, non-PO batches.
-6. `RECEIPT_REVERSAL` movements are only created by `cancel_purchase_order` on untouched PO-linked batches.
-7. `initial_quantity` is immutable after create, except typo correction on unconsumed manual batches (`ADJUSTMENT` bumps `initial_quantity` in lockstep).
-8. COGS is derived from `SALE` movements on `CONFIRMED` sales orders only.
-9. `record_movement` is the only code path that changes `current_quantity` after batch creation.
-10. `ADJUSTMENT` is only for unconsumed, non-PO manual batches (serializer eligibility unchanged).
-11. Voided batches (`voided_at` set) have `current_quantity = 0` and are hidden from the stock drawer by default; movement rows are never deleted.
-
-### COGS and financials
-
-COGS is the sum of `-delta × stock_batch.unit_cost` over `StockMovement` rows where `reason=SALE` and the linked sales order is `CONFIRMED`.
-
-Revenue is the sum of `-delta × sales_order_item.unit_price` on those same `SALE` movements (movement-based so multi-batch confirms and period filters stay aligned). Inventory value is `Sum(current_quantity × unit_cost)` on `Stock` — always a **current snapshot**, not period-scoped.
-
-When a sales order is cancelled, its `SALE` movements stay in the database for audit but are excluded from COGS by filtering on order status. `RETURN` movements restore stock but are not netted into the COGS calculation — cancelled orders simply drop out of the revenue and COGS aggregates.
-
-**Qty purchased / qty sold (dashboard):** net movement deltas in the period — `RECEIPT` + `VOID` + `RECEIPT_REVERSAL` for purchases; `SALE` + `RETURN` for sales. Manual voids and order cancellations within the window net to zero without removing ledger rows.
-
-**Per-product percentages** (dashboard product table; API field `margin`):
-
-| Metric | Formula | API field | Notes |
-|--------|---------|-----------|-------|
-| Gross margin | `(profit ÷ revenue) × 100` | `margin` | `0` when revenue is 0 |
-| Markup on cost | `(profit ÷ COGS) × 100` | `markup_on_cost` | `null` when COGS is 0 |
-
-Gross margin is share of revenue kept after COGS. Markup on cost is profit relative to cost — e.g. 150% markup means profit is 1.5× COGS. Margin-band filters and sort-by-`-margin` use gross margin only.
-
-**Period filtering (dashboard):** `GET /inventory/financials/` and `GET /inventory/financials/products/` accept optional inclusive `from` / `to` query params (`YYYY-MM-DD`). When both are omitted, aggregates are all-time. When set, revenue and COGS are scoped to confirmed `SALE` movements in the window; per-product qty purchased and qty sold net `RECEIPT`/`RECEIPT_REVERSAL` and `SALE`/`RETURN` respectively. Inventory value is unchanged (current snapshot).
-
-Implemented in `apps/inventory/selectors.py` and `apps/inventory/financial_period.py`.
-
-### Stock allocation on sales order confirm
-
-When a draft sales order is confirmed, `confirm_sales_order` deducts stock batch-by-batch via `record_movement(SALE)`. The batch order is chosen per confirm request:
-
-| `allocation_strategy` | Ordering | UI label (confirm modal) |
-|-----------------------|----------|---------------------------|
-| `FIFO` (default) | `created_at` ascending | Oldest stock first |
-| `FEFO` | `best_before` ascending, nulls last; then `created_at` | Expiring soonest |
-
-Passed in the body of `POST /api/v1/orders/sales-orders/{id}/confirm/` as `allocation_strategy`. Not stored on the order — each confirm is an explicit choice. Implementation: `apps/orders/allocation.py::available_batches_for_allocation()`.
-
-**Hybrid FEFO null policy:** Batches without `best_before` are consumed after all dated batches. If every batch lacks a date, FEFO matches FIFO. Expiry is optional on PO lines and manual stock entry.
-
-### `django-simple-history` on `Stock`
-
-`Stock` carries `HistoricalRecords()`. Quantity changes from `record_movement` use `save_without_historical_record()` so batch history is not duplicated at movement frequency. The movement ledger is the audit trail for quantity; `HistoricalStock` covers other field changes on the batch model.
-
-### Delete and cancel guards
-
-**Stock batch void:** `DELETE /inventory/stocks/{id}/` returns 405 — batches are never deleted. Manual batches are removed via `POST /inventory/stocks/{id}/void/`, which appends a `VOID` movement and sets `voided_at`. Blocked when the batch is PO-linked (cancel the PO instead), already voided, has no remaining quantity, or has any `SALE` history. PO-linked batches cannot be voided from the drawer.
-
-**Stock.voided_at:** nullable timestamp set when a batch is voided (manual or PO cancel). `voided_at IS NULL` = active for listing; voided batches are excluded from `GET /inventory/stocks/` unless `?include_voided=true`. Depleted batches (`current_quantity = 0` from sales) remain visible unless voided.
-
-**Order delete:** `DELETE` on purchase or sales orders returns 409 when the order has any linked `StockMovement` rows (confirmed or cancelled). Draft orders with no movements may still be deleted. Cancel first to append compensating movements and preserve ledger integrity.
-
-**PO cancel after a cancelled sale:** if stock from a PO was sold and the sale later cancelled, quantity is restored via `RETURN` but `SALE` rows remain. PO cancel is blocked in that case even when on-hand quantity matches the original receipt. **Trade-off:** audit history over PO reversal; unwinding a PO after commercial activity on its batches is not supported.
-
-**PO cancel (untouched receipt):** appends `RECEIPT_REVERSAL` per linked batch and sets `voided_at` — the original `RECEIPT` row and `Stock` row are kept for audit.
-
-### Inventory adjustments
-
-Typo correction on unconsumed, manually created batches is supported via `ADJUSTMENT` movements in `StockViewSet.perform_update` (eligibility enforced in the serializer: not PO-linked, not partially consumed).
-
-Shrinkage, spoilage, and count corrections on partially consumed batches are not implemented — those would require negative adjustments against batches where `current < initial` without breaking the movement invariants.
-
-## Authentication: Cookie-Only Refresh
-
-JWT access tokens are returned in the JSON body. Refresh tokens are **httpOnly cookies only** — no refresh token in the response body, no `sessionStorage` fallback on the frontend. `RefreshView` reads the cookie exclusively.
-
-## CORS and API Documentation
-
-- **`django-cors-headers`:** configured in `config/settings.py`. `CORS_ALLOWED_ORIGINS` is read from the environment and defaults to `http://localhost:3000`. In production the frontend and API share the same CloudFront origin, so CORS is only active in local development.
-- **`drf-spectacular`:** generates OpenAPI 3 schema and interactive docs:
-  - Swagger UI: `/api/docs/`
-  - ReDoc: `/api/redoc/`
-  - Raw schema: `/api/schema/`
-
-## AI Chat Assistant
-
-Natural-language Q&A on the dashboard, backed by Claude Sonnet 4.6 with adaptive thinking and tool use. The backend is stateless — the frontend sends the full in-session conversation on each turn.
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/v1/assistant/chat/` | Send `messages` (user/assistant turns); returns `{ "reply": "..." }` |
-
-**Request body:** `{ "messages": [{ "role": "user" \| "assistant", "content": "..." }, ...] }` — include the new user message in the array before sending.
-
-**Auth:** `IsAuthenticated` only. Tenant isolation is structural: every tool calls the existing selector layer with `user=request.user`.
-
-**Agentic loop:** `ChatView` calls the Anthropic API with six read-only tool definitions (`get_overall_financials`, `get_products_with_financials`, `get_stock_levels`, `list_purchase_orders`, `list_sales_orders`, `list_stock_movements`). The model may iterate up to 10 tool rounds per request. Tool executors live in `apps/assistant/tools.py` and delegate to `apps/inventory/selectors.py` and `apps/orders/selectors.py`.
-
-**Configuration:** `ANTHROPIC_API_KEY` (server-side only). Missing key does not crash startup; the chat endpoint returns 503 at call time.
-
-**Frontend:** `AssistantFab` in `AppLayout` — FAB + `AIChatDrawer` on **Home** (`/`) and **Financials** (`/financials`). Chat history is lifted to layout state so it persists when switching between those pages. Not persisted across reloads. Cap at 20 messages sent to the backend per turn.
-
-Implemented in `apps/assistant/`. See [`docs/phases/phase-31-ai-chat-assistant.md`](phases/phase-31-ai-chat-assistant.md).
-
-## Frontend application shell
-
-Authenticated routes live under `AppLayout` (burger-drawer nav). No backend routes — client-side React Router only.
-
-| Path | Page | Purpose |
-|------|------|---------|
-| `/` | `HomePage` | Period KPI snapshot, needs-attention cards, recent stock movements |
-| `/financials` | `FinancialsPage` | Period-scoped P&L summary + paginated product performance table |
-| `/inventory/products` | `ProductListPage` | Product catalog; `?stock=out_of_stock` pre-filters stock level |
-| `/orders/purchases` | `PurchaseOrdersPage` | Purchase order list; `?orderId=` opens detail modal |
-| `/orders/sales` | `SalesOrdersPage` | Sales order list; `?orderId=` opens detail modal |
-| `/history` | `HistoryPage` | Stock movement audit trail |
-
-`/orders` redirects to `/orders/purchases`. Order deep links are built via `buildOrderPath()` in `frontend/src/utils/orders.ts` (used by History, batch activity, and Home widgets).
-
-Nav: Home, Financials, Products, Purchases, Sales, Stock History. See [`docs/phases/phase-34-home-and-nav.md`](phases/phase-34-home-and-nav.md).
-
-## Test Database: Always Postgres
-
-Tests run against the Dockerized Postgres instance. `pytest.ini` points at `config.settings`, and the Postgres container must be running before executing the test suite:
-
-```bash
-docker compose up -d && docker compose exec backend pytest
-```
-
-**Why:** Production-parity testing removes environment-specific bugs. `pytest-django` creates a throwaway database per session — no shared state between runs.
-
-## AWS Deployment (summary)
-
-Production runs on AWS, defined in `infrastructure/` via CDK:
-
-- **Frontend + API:** a single CloudFront distribution serves both. Static assets come from S3; `/api/*` and `/admin/*` paths route to Elastic Beanstalk. Frontend and API share the same origin — no CORS in production.
-- **Backend:** ECR image on Elastic Beanstalk (Docker multicontainer: Django + Postgres on one EC2 instance)
-- **CI/CD:** GitHub Actions builds and deploys on push to `main`
-
-Production Elastic Beanstalk environment variables are set at CDK deploy time from `infrastructure/.env` (see [`infrastructure/README.md`](../infrastructure/README.md)).
+For domain rules (ledger, orders, allocation), see [Inventory & orders](domain/inventory-and-orders.md). For metric definitions, see [Financials](domain/financials.md).
 
 ---
 
-## Known Compromises
+## System context
 
-### Infrastructure & Database Deployment
+Production serves the React SPA and Django API from a **single CloudFront origin**. Local development runs three Docker Compose services (Postgres, backend, frontend).
 
-A standard production SaaS separates the backend from the database using a managed service like AWS RDS. To prioritize speed and minimize cost, both the Django application and PostgreSQL run as containers on a single Elastic Beanstalk instance (`backend/docker-compose.yml`). See the infrastructure README for the full topology and trade-offs.
+```mermaid
+graph LR
+    Browser["Browser"]
 
-### No multi-tenancy
+    subgraph prod ["Production"]
+        CF["CloudFront"]
+        S3["S3 — static SPA"]
+        EB["Elastic Beanstalk"]
+        Django["Django + Gunicorn"]
+        PG["PostgreSQL container"]
+    end
 
-The data model has no `Organization` entity. All user data is isolated at the row level via `queryset.filter(user=request.user)` — each user sees only their own inventory, orders, and financials. A production multi-tenant SaaS would introduce an `Organization` model with owner and member roles.
+    Browser --> CF
+    CF -->|"/api/*", "/admin/*"| EB
+    CF -->|"/*"| S3
+    EB --> Django
+    Django --> PG
+```
 
-### Business logic trade-offs
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Vite, Mantine, Tailwind, TanStack Query |
+| Backend | Django 5, Django REST Framework, PostgreSQL |
+| Auth | JWT access token (JSON) + httpOnly refresh cookie |
+| API docs | drf-spectacular (Swagger `/api/docs/`, ReDoc `/api/redoc/`) |
+| Infrastructure | AWS CDK — CloudFront, S3, Elastic Beanstalk, ECR |
 
-- **PO-linked batches** cannot be voided from the drawer or have quantity/cost edited manually — cancel the PO to reverse an untouched receipt via `RECEIPT_REVERSAL`. Unconsumed manual batches support typo correction through `ADJUSTMENT` movements or full removal through `VOID`. Shrinkage on consumed batches is not supported yet.
-- **Sales order cancellation** reverses each `SALE` with a matching `RETURN` on the same batch; `initial_quantity` is never modified.
-- **PO cancellation** on untouched receipts voids linked batches via `RECEIPT_REVERSAL`; it is blocked once any batch from that PO has `SALE` history, even if a subsequent sale was cancelled and quantity was restored.
-- **Partial fulfillments** are not supported — order confirmation is all-or-nothing.
+Deploy details: [infrastructure/README.md](../infrastructure/README.md).
+
+---
+
+## Backend structure
+
+Django apps live under `backend/apps/`:
+
+| App | Responsibility |
+|-----|----------------|
+| `accounts` | Email-based user registration and JWT auth |
+| `inventory` | Products, stock batches, movement ledger, financial selectors |
+| `orders` | Purchase and sales orders, confirm/cancel commands, FIFO/FEFO allocation |
+| `assistant` | Optional AI chat (Anthropic); read-only tools over existing selectors |
+| `core` | Shared abstractions (`TenantOwnedModel`, cursor pagination) |
+
+All API routes are versioned under **`/api/v1/`**.
+
+### CQRS lite
+
+State changes live in **`commands.py`** (e.g. `confirm_sales_order`, `record_movement`). Reads and aggregates live in **`selectors.py`** (e.g. `get_overall_financials`, `list_stock_movements`). DRF views authenticate, validate input, call a command or selector, and serialize the response.
+
+This keeps side effects explicit and lets tests call business logic without HTTP.
+
+### Write path (example)
+
+Confirming a sales order:
+
+```
+POST /api/v1/orders/sales-orders/{id}/confirm/
+  → SalesOrderViewSet.confirm
+  → confirm_sales_order (orders/commands.py)
+  → record_movement (inventory/commands.py) per batch deduction
+  → StockMovement rows + updated Stock.current_quantity
+```
+
+Every quantity change after batch creation goes through `record_movement()` — see [Inventory & orders](domain/inventory-and-orders.md).
+
+---
+
+## Data model (overview)
+
+```mermaid
+erDiagram
+    User ||--o{ Product : owns
+    User ||--o{ Stock : owns
+    User ||--o{ StockMovement : owns
+    User ||--o{ PurchaseOrder : owns
+    User ||--o{ SalesOrder : owns
+
+    Product ||--o{ Stock : "stock_batches"
+    Product ||--o{ PurchaseOrderItem : ""
+    Product ||--o{ SalesOrderItem : ""
+
+    PurchaseOrder ||--o{ PurchaseOrderItem : items
+    SalesOrder ||--o{ SalesOrderItem : items
+
+    PurchaseOrderItem ||--o| Stock : "optional link"
+    Stock ||--o{ StockMovement : movements
+    SalesOrderItem ||--o{ StockMovement : "SALE / RETURN"
+    PurchaseOrderItem ||--o{ StockMovement : "RECEIPT / reversal"
+```
+
+| Entity | Notes |
+|--------|--------|
+| **User** | Login via `email` (`USERNAME_FIELD`); `username` exists for Django admin only |
+| **Product** | Name, description, SKU (unique per user), unit of measure (`KG`, `G`, `L`, `ML`, `UNIT`) |
+| **Stock** | UUID batch: lot code, optional `best_before`, `unit_cost`, `initial_quantity`, `current_quantity`, optional `voided_at` |
+| **StockMovement** | Append-only ledger row: `delta`, `reason`, links to batch and optionally order line |
+| **PurchaseOrder / SalesOrder** | `DRAFT` → `CONFIRMED` or `CANCELLED`; optional title |
+| **Order items** | Line-level quantity and unit cost (PO) or unit price (SO); scoped to parent order's user |
+
+Tenant-owned models (`Product`, `Stock`, `StockMovement`, orders) extend `TenantOwnedModel` with a required `user` foreign key.
+
+---
+
+## Access control and data ownership
+
+Each account is an **independent inventory tenant**. Every business record — products, batches, movements, and orders — is owned by the authenticated user through `TenantOwnedModel` (`user` foreign key, `created_at`, `updated_at`).
+
+Enforcement is layered:
+
+| Layer | Mechanism |
+|-------|-----------|
+| **API reads** | View querysets filter on `request.user` — users only list and retrieve their own rows. |
+| **API writes** | Commands validate that referenced products and batches belong to the acting user before creating order lines or movements. |
+| **Assistant** | Chat tools call the same selector layer; no cross-user reads. |
+
+
+---
+
+## Authentication
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/auth/register/` | Create account (email + password) |
+| `POST /api/v1/auth/login/` | Returns `access` token and `user` in JSON; sets `refresh_token` httpOnly cookie |
+| `POST /api/v1/auth/token/refresh/` | Reads refresh token from cookie only; returns new access token |
+| `POST /api/v1/auth/logout/` | Blacklists refresh token, clears cookie |
+| `GET /api/v1/auth/me/` | Current user profile |
+
+**Frontend:** access token held in memory; axios attaches `Authorization: Bearer …` and retries on 401 via silent cookie refresh (`frontend/src/api/client.ts`).
+
+**Production:** frontend and API share the CloudFront origin, so CORS is only needed in local dev (`CORS_ALLOWED_ORIGINS`).
+
+---
+
+## Security configuration
+
+| Setting | Behavior |
+|---------|----------|
+| `ALLOWED_HOSTS` | Comma-separated env var; production includes CloudFront hostname and `.elasticbeanstalk.com` for health checks |
+| Default DRF permission | `IsAuthenticated` on all endpoints except register/login/refresh |
+| Refresh token | Never returned in JSON; httpOnly cookie only |
+
+---
+
+## Frontend structure
+
+Client-side routing (`frontend/src/App.tsx`). Authenticated pages use `AppLayout` (drawer navigation).
+
+| Route | Page |
+|-------|------|
+| `/` | Home — period KPIs, attention cards, recent movements |
+| `/financials` | P&L summary and per-product performance table |
+| `/inventory/products` | Product catalog and stock drawer |
+| `/orders/purchases` | Purchase orders (`?status=draft\|confirmed\|cancelled`; `?orderId=` opens detail modal) |
+| `/orders/sales` | Sales orders (same query params) |
+| `/history` | Stock movement audit trail |
+
+Data fetching uses TanStack Query hooks in `frontend/src/api/`. Mutations invalidate related query keys (e.g. orders → stocks and financials).
+
+**Optional:** AI assistant FAB on Home and Financials (`POST /api/v1/assistant/chat/`). Requires `ANTHROPIC_API_KEY` on the server; returns 503 if unset.
+
+---
+
+## API surface (summary)
+
+Full request/response schemas: **Swagger** at `/api/docs/`.
+
+| Prefix | Resources |
+|--------|-----------|
+| `/api/v1/auth/` | Register, login, refresh, logout, me |
+| `/api/v1/inventory/products/` | Product CRUD |
+| `/api/v1/inventory/stocks/` | Stock batches; `POST …/void/`; `GET …/movements/` |
+| `/api/v1/inventory/movements/` | Tenant-wide movement list (filtered, paginated) |
+| `/api/v1/inventory/financials/` | Overall and per-product financial aggregates |
+| `/api/v1/orders/purchase-orders/` | PO CRUD; list accepts `?status=`; `POST …/confirm/`, `POST …/cancel/` |
+| `/api/v1/orders/sales-orders/` | SO CRUD; list accepts `?status=`; confirm (with optional `allocation_strategy`); cancel |
+| `/api/v1/assistant/chat/` | AI chat (optional) |
+
+Lifecycle endpoints (confirm, cancel, void) are documented in [Inventory & orders](domain/inventory-and-orders.md).
+
+---
+
+## Testing
+
+Backend tests use **pytest** against the Dockerized Postgres instance (same engine as production):
+
+```bash
+docker compose up -d db
+docker compose exec backend pytest
+```
+
+CI runs the same on push/PR to `main` when backend files change (`.github/workflows/test.yml`).
+
+---
+
+## Design boundaries
+
+Documented limits of this build — distinct from the core inventory flows above.
+
+| Area | Choice |
+|------|--------|
+| **Production database** | PostgreSQL runs on the same Elastic Beanstalk instance as Django (not RDS). Keeps deploy cost and complexity down; see [infrastructure/README.md](../infrastructure/README.md). |
+| **Adjustments** | Quantity corrections apply to unconsumed, manually entered batches. Shrinkage on partially sold batches would need a separate workflow — see [Inventory & orders](domain/inventory-and-orders.md). |
+| **PO cancellation** | A confirmed PO can be reversed only while its batches are untouched by sales; see domain doc for the full rule. |
+
+Business rules and movement invariants: [Inventory & orders](domain/inventory-and-orders.md).

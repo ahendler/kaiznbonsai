@@ -19,6 +19,7 @@ import {
 } from '@/api/financials'
 import { getApiErrorMessage } from '@/api/errors'
 import FinancialPeriodFilter from '@/components/dashboard/FinancialPeriodFilter'
+import { PageTitle } from '@/components/layout/PageTitle'
 import MetricColumnHeader from '@/components/dashboard/MetricColumnHeader'
 import {
   formatCurrency,
@@ -139,11 +140,11 @@ export default function FinancialsPage() {
 
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="center" wrap="wrap">
-        <div>
-          <Title order={2}>Financial Overview</Title>
-          <Text c="dimmed" size="sm">High-level metrics and product performance.</Text>
-        </div>
+      <Group justify="space-between" align="baseline" wrap="wrap">
+        <PageTitle
+          title="Financial Overview"
+          subtitle="high-level metrics and product performance"
+        />
         <Group gap="sm" wrap="wrap" align="center">
           <FinancialPeriodFilter value={period} onChange={setPeriod} />
           {periodLabel && period.preset !== 'custom' && (

@@ -2,10 +2,55 @@ import type { OrderStatus, StockAllocationStrategy } from '@/api/orders'
 
 export type OrderKind = 'purchases' | 'sales'
 
-export function buildOrderPath(kind: OrderKind, orderId?: number): string {
+export type OrderStatusSlug = 'draft' | 'confirmed' | 'cancelled'
+
+export type OrderPathQuery = {
+  status?: OrderStatusSlug
+}
+
+const ORDER_STATUS_SLUGS: readonly OrderStatusSlug[] = ['draft', 'confirmed', 'cancelled']
+
+export type OrderStatusFilter = 'all' | OrderStatusSlug
+
+export const ORDER_STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'draft', label: 'Draft only' },
+  { value: 'confirmed', label: 'Confirmed only' },
+  { value: 'cancelled', label: 'Cancelled only' },
+] as const satisfies ReadonlyArray<{ value: OrderStatusFilter; label: string }>
+
+export function parseOrderStatusSlug(value: string | null): OrderStatusSlug | null {
+  if (!value) return null
+  const normalized = value.toLowerCase()
+  return ORDER_STATUS_SLUGS.includes(normalized as OrderStatusSlug)
+    ? (normalized as OrderStatusSlug)
+    : null
+}
+
+export function orderStatusSlugToApi(slug: OrderStatusSlug): OrderStatus {
+  return slug.toUpperCase() as OrderStatus
+}
+
+export function orderStatusToSlug(status: OrderStatus): OrderStatusSlug {
+  return status.toLowerCase() as OrderStatusSlug
+}
+
+export function parseOrderStatusFilter(value: string | null): OrderStatusFilter {
+  const slug = parseOrderStatusSlug(value)
+  return slug ?? 'all'
+}
+
+export function buildOrderPath(
+  kind: OrderKind,
+  orderId?: number,
+  query?: OrderPathQuery,
+): string {
   const base = kind === 'sales' ? '/orders/sales' : '/orders/purchases'
-  if (orderId == null) return base
-  return `${base}?orderId=${orderId}`
+  const params = new URLSearchParams()
+  if (query?.status) params.set('status', query.status)
+  if (orderId != null) params.set('orderId', String(orderId))
+  const qs = params.toString()
+  return qs ? `${base}?${qs}` : base
 }
 
 export function parseOrderId(value: string | null): number | null {

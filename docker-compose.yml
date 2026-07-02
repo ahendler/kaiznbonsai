@@ -28,6 +28,7 @@ services:
       - "8000:8000"
     environment:
       POSTGRES_HOST: db
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
     depends_on:
       db:
         condition: service_healthy

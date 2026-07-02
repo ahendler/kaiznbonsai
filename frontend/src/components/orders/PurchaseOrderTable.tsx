@@ -2,24 +2,27 @@ import { useState } from 'react'
 import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Tooltip, Box } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCheck, IconX } from '@tabler/icons-react'
-import { useDisclosure } from '@mantine/hooks'
 import { usePurchaseOrders, useConfirmPurchaseOrder, useCancelPurchaseOrder } from '@/api/orders'
-import type { PurchaseOrder } from '@/api/orders'
+import type { OrderListFilters, PurchaseOrder } from '@/api/orders'
 import { getApiErrorMessage } from '@/api/errors'
-import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCancelTooltip, orderStatusColor, sumLineTotals } from '@/utils/orders'
+import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCancelTooltip, orderStatusColor, sumLineTotals, type OrderStatusFilter } from '@/utils/orders'
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
 import { OrderTableTitleCell, ORDER_NAME_COLUMN_MAX_WIDTH } from '@/components/orders/OrderTableTitleCell'
-import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
 
 interface PurchaseOrderTableProps {
+  listFilters: OrderListFilters
+  statusFilter: OrderStatusFilter
   onViewOrder?: (order: PurchaseOrder) => void
 }
 
-export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
-  const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = usePurchaseOrders()
+export function PurchaseOrderTable({
+  listFilters,
+  statusFilter,
+  onViewOrder,
+}: PurchaseOrderTableProps) {
+  const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = usePurchaseOrders(listFilters)
   const confirmMutation = useConfirmPurchaseOrder()
   const cancelMutation = useCancelPurchaseOrder()
-  const [opened, { open, close }] = useDisclosure(false)
   const [actionOrder, setActionOrder] = useState<{
     id: number
     action: 'confirm' | 'cancel'
@@ -27,6 +30,7 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
   } | null>(null)
 
   const orders = ordersData?.pages.flatMap(page => page.results) || []
+  const hasStatusFilter = statusFilter !== 'all'
 
   if (isLoading) return <Center p="xl"><Loader /></Center>
 
@@ -112,11 +116,6 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
-        <Text size="lg" fw={500}>Inbound Shipments</Text>
-        <Button onClick={open}>Create Purchase Order</Button>
-      </Group>
-
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -129,7 +128,21 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
             <Table.Th ta="center">Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
-        <Table.Tbody>{rows?.length ? rows : <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" ta="center">No purchase orders found.</Text></Table.Td></Table.Tr>}</Table.Tbody>
+        <Table.Tbody>
+          {rows?.length ? (
+            rows
+          ) : (
+            <Table.Tr>
+              <Table.Td colSpan={7}>
+                <Text c="dimmed" ta="center">
+                  {hasStatusFilter
+                    ? 'No purchase orders match your status filter.'
+                    : 'No purchase orders found.'}
+                </Text>
+              </Table.Td>
+            </Table.Tr>
+          )}
+        </Table.Tbody>
       </Table>
 
       {hasNextPage && (
@@ -139,8 +152,6 @@ export function PurchaseOrderTable({ onViewOrder }: PurchaseOrderTableProps) {
           </Button>
         </Center>
       )}
-
-      <PurchaseOrderDrawer opened={opened} onClose={close} />
 
       <OrderActionConfirmModal
         opened={!!actionOrder}
