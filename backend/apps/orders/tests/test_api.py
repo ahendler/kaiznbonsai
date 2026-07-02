@@ -64,6 +64,41 @@ class TestPurchaseOrderAPI:
         assert len(response.data['items']) == 1
         assert PurchaseOrder.objects.count() == 1
 
+    def test_list_purchase_orders_returns_all_statuses_by_default(self, authenticated_client, user):
+        draft = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        confirmed = PurchaseOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+        cancelled = PurchaseOrder.objects.create(user=user, status=OrderStatus.CANCELLED)
+
+        response = authenticated_client.get('/api/v1/orders/purchase-orders/')
+        assert response.status_code == 200
+        ids = {order['id'] for order in response.data['results']}
+        assert ids == {draft.id, confirmed.id, cancelled.id}
+
+    def test_filter_purchase_orders_by_status(self, authenticated_client, user):
+        draft = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        PurchaseOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+
+        response = authenticated_client.get('/api/v1/orders/purchase-orders/', {'status': 'DRAFT'})
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['id'] == draft.id
+        assert response.data['results'][0]['status'] == OrderStatus.DRAFT
+
+    def test_filter_purchase_orders_by_status_case_insensitive(self, authenticated_client, user):
+        draft = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        PurchaseOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+
+        response = authenticated_client.get('/api/v1/orders/purchase-orders/', {'status': 'draft'})
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['id'] == draft.id
+
+    def test_filter_purchase_orders_invalid_status_returns_400(self, authenticated_client, user):
+        PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+
+        response = authenticated_client.get('/api/v1/orders/purchase-orders/', {'status': 'PENDING'})
+        assert response.status_code == 400
+
     def test_confirm_purchase_order(self, authenticated_client, product, user):
         po = PurchaseOrder.objects.create(user=user, status=OrderStatus.DRAFT)
         po.items.create(product=product, quantity=100, unit_cost=10.50, lot_code='LOT1')
@@ -184,6 +219,41 @@ class TestSalesOrderAPI:
         assert response.data['status'] == OrderStatus.DRAFT
         assert len(response.data['items']) == 1
         assert SalesOrder.objects.count() == 1
+
+    def test_list_sales_orders_returns_all_statuses_by_default(self, authenticated_client, user):
+        draft = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        confirmed = SalesOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+        cancelled = SalesOrder.objects.create(user=user, status=OrderStatus.CANCELLED)
+
+        response = authenticated_client.get('/api/v1/orders/sales-orders/')
+        assert response.status_code == 200
+        ids = {order['id'] for order in response.data['results']}
+        assert ids == {draft.id, confirmed.id, cancelled.id}
+
+    def test_filter_sales_orders_by_status(self, authenticated_client, user):
+        draft = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        SalesOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+
+        response = authenticated_client.get('/api/v1/orders/sales-orders/', {'status': 'DRAFT'})
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['id'] == draft.id
+        assert response.data['results'][0]['status'] == OrderStatus.DRAFT
+
+    def test_filter_sales_orders_by_status_case_insensitive(self, authenticated_client, user):
+        draft = SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+        SalesOrder.objects.create(user=user, status=OrderStatus.CONFIRMED)
+
+        response = authenticated_client.get('/api/v1/orders/sales-orders/', {'status': 'draft'})
+        assert response.status_code == 200
+        assert len(response.data['results']) == 1
+        assert response.data['results'][0]['id'] == draft.id
+
+    def test_filter_sales_orders_invalid_status_returns_400(self, authenticated_client, user):
+        SalesOrder.objects.create(user=user, status=OrderStatus.DRAFT)
+
+        response = authenticated_client.get('/api/v1/orders/sales-orders/', {'status': 'PENDING'})
+        assert response.status_code == 400
 
     def test_confirm_sales_order_success(self, authenticated_client, product, user):
         stock = make_stock_with_receipt(user, product, 100)

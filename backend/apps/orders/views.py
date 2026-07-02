@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
 from apps.inventory.models import StockMovement
+from .filters import parse_order_status
 from .serializers import PurchaseOrderSerializer, SalesOrderSerializer, ConfirmSalesOrderSerializer
 from .selectors import get_purchase_orders_for_user, get_sales_orders_for_user
 from .commands import (
@@ -18,7 +19,8 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return get_purchase_orders_for_user(self.request.user)
+        order_status = parse_order_status(self.request.query_params.get('status'))
+        return get_purchase_orders_for_user(self.request.user, status=order_status)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -69,7 +71,8 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return get_sales_orders_for_user(self.request.user)
+        order_status = parse_order_status(self.request.query_params.get('status'))
+        return get_sales_orders_for_user(self.request.user, status=order_status)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
