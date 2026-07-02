@@ -1,6 +1,6 @@
 # KaiznBonsai — AWS Infrastructure
 
-Infrastructure-as-code for deploying KaiznBonsai to AWS (CDK, Python). Application design decisions: [`docs/architecture.md`](../docs/architecture.md).
+Infrastructure-as-code for deploying KaiznBonsai to AWS (CDK, Python). Application design: [`docs/architecture.md`](../docs/architecture.md).
 
 ## Topology
 
@@ -18,7 +18,7 @@ graph TD
 
     subgraph EB["Elastic Beanstalk — Docker"]
         Django["Django + Gunicorn<br/>(ECR image)"]
-        PG["PostgreSQL 15<br/>(container)"]
+        PG["PostgreSQL<br/>(container)"]
     end
 
     ECR["ECR<br/>kaiznbonsai-backend"]
@@ -44,7 +44,7 @@ graph TD
 | Registry | ECR | `kaiznbonsai-backend` image |
 | EB bundles | S3 | Application version manifests (compose zip) |
 
-Postgres runs on the same EB instance as Django (not RDS). See [`docs/architecture.md`](../docs/architecture.md#infrastructure--database-deployment).
+Postgres runs on the same EB instance as Django (not RDS). See [`docs/architecture.md`](../docs/architecture.md#known-compromises).
 
 ## Configuration
 
