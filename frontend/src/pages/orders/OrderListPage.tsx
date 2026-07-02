@@ -1,9 +1,14 @@
 import { useMemo } from 'react'
-import { Container, Title } from '@mantine/core'
+import { Button, Container, Group } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import { useSearchParams } from 'react-router-dom'
 import { PurchaseOrderTable } from '@/components/orders/PurchaseOrderTable'
 import { SalesOrderTable } from '@/components/orders/SalesOrderTable'
 import OrderDetailModal from '@/components/orders/OrderDetailModal'
+import { OrderStatusFilterSelect } from '@/components/orders/OrderStatusFilterSelect'
+import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
+import { SalesOrderDrawer } from '@/components/orders/SalesOrderDrawer'
+import { PageTitle } from '@/components/layout/PageTitle'
 import { usePurchaseOrder, useSalesOrder } from '@/api/orders'
 import type { OrderListFilters } from '@/api/orders'
 import {
@@ -17,10 +22,12 @@ import {
 interface Props {
   kind: OrderKind
   title: string
+  subtitle: string
 }
 
-export default function OrderListPage({ kind, title }: Props) {
+export default function OrderListPage({ kind, title, subtitle }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false)
   const orderId = parseOrderId(searchParams.get('orderId'))
   const statusFilter = parseOrderStatusFilter(searchParams.get('status'))
 
@@ -83,46 +90,60 @@ export default function OrderListPage({ kind, title }: Props) {
 
   return (
     <Container size="xl">
-      <Title order={2} mb="xl">
-        {title}
-      </Title>
+      <Group justify="space-between" align="baseline" mb="xl" wrap="wrap" gap="md">
+        <PageTitle title={title} subtitle={subtitle} />
+        <Group gap="md" wrap="wrap">
+          <OrderStatusFilterSelect value={statusFilter} onChange={setStatusFilter} />
+          {kind === 'purchases' ? (
+            <Button onClick={openCreate}>Create Purchase Order</Button>
+          ) : (
+            <Button color="blue" onClick={openCreate}>
+              Create Sales Order
+            </Button>
+          )}
+        </Group>
+      </Group>
 
       {kind === 'purchases' ? (
         <PurchaseOrderTable
           listFilters={listFilters}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
           onViewOrder={(order) => openOrder(order.id)}
         />
       ) : (
         <SalesOrderTable
           listFilters={listFilters}
           statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
           onViewOrder={(order) => openOrder(order.id)}
         />
       )}
 
       {kind === 'sales' && (
-        <OrderDetailModal
-          variant="sales"
-          opened={salesOrderId !== null}
-          order={salesOrder}
-          loading={salesOrderLoading}
-          error={salesOrderError}
-          onClose={closeOrderModal}
-        />
+        <>
+          <SalesOrderDrawer opened={createOpened} onClose={closeCreate} />
+          <OrderDetailModal
+            variant="sales"
+            opened={salesOrderId !== null}
+            order={salesOrder}
+            loading={salesOrderLoading}
+            error={salesOrderError}
+            onClose={closeOrderModal}
+          />
+        </>
       )}
 
       {kind === 'purchases' && (
-        <OrderDetailModal
-          variant="purchase"
-          opened={purchaseOrderId !== null}
-          order={purchaseOrder}
-          loading={purchaseOrderLoading}
-          error={purchaseOrderError}
-          onClose={closeOrderModal}
-        />
+        <>
+          <PurchaseOrderDrawer opened={createOpened} onClose={closeCreate} />
+          <OrderDetailModal
+            variant="purchase"
+            opened={purchaseOrderId !== null}
+            order={purchaseOrder}
+            loading={purchaseOrderLoading}
+            error={purchaseOrderError}
+            onClose={closeOrderModal}
+          />
+        </>
       )}
     </Container>
   )

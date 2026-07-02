@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import FinancialPeriodFilter from '@/components/dashboard/FinancialPeriodFilter'
+import { PageTitle } from '@/components/layout/PageTitle'
 import OrderReferenceCell from '@/components/orders/OrderReferenceCell'
 import { listStockMovements } from '@/api/activity'
 import { useOverallFinancials, listProductFinancials } from '@/api/financials'
@@ -202,13 +203,11 @@ export default function HomePage() {
 
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="flex-start" wrap="wrap">
-        <div>
-          <Title order={2}>Home</Title>
-          <Text c="dimmed" size="sm">
-            Snapshot of your business for the selected period.
-          </Text>
-        </div>
+      <Group justify="space-between" align="baseline" wrap="wrap">
+        <PageTitle
+          title="Home"
+          subtitle="snapshot of your business for the selected period"
+        />
         <Group gap="sm" wrap="wrap" align="center">
           <FinancialPeriodFilter value={period} onChange={setPeriod} />
           {periodLabel && period.preset !== 'custom' && (

@@ -163,8 +163,8 @@ Client-side routing (`frontend/src/App.tsx`). Authenticated pages use `AppLayout
 | `/` | Home — period KPIs, attention cards, recent movements |
 | `/financials` | P&L summary and per-product performance table |
 | `/inventory/products` | Product catalog and stock drawer |
-| `/orders/purchases` | Purchase orders (`?orderId=` opens detail modal) |
-| `/orders/sales` | Sales orders |
+| `/orders/purchases` | Purchase orders (`?status=draft\|confirmed\|cancelled`; `?orderId=` opens detail modal) |
+| `/orders/sales` | Sales orders (same query params) |
 | `/history` | Stock movement audit trail |
 
 Data fetching uses TanStack Query hooks in `frontend/src/api/`. Mutations invalidate related query keys (e.g. orders → stocks and financials).
@@ -184,8 +184,8 @@ Full request/response schemas: **Swagger** at `/api/docs/`.
 | `/api/v1/inventory/stocks/` | Stock batches; `POST …/void/`; `GET …/movements/` |
 | `/api/v1/inventory/movements/` | Tenant-wide movement list (filtered, paginated) |
 | `/api/v1/inventory/financials/` | Overall and per-product financial aggregates |
-| `/api/v1/orders/purchase-orders/` | PO CRUD; `POST …/confirm/`, `POST …/cancel/` |
-| `/api/v1/orders/sales-orders/` | SO CRUD; confirm (with optional `allocation_strategy`); cancel |
+| `/api/v1/orders/purchase-orders/` | PO CRUD; list accepts `?status=`; `POST …/confirm/`, `POST …/cancel/` |
+| `/api/v1/orders/sales-orders/` | SO CRUD; list accepts `?status=`; confirm (with optional `allocation_strategy`); cancel |
 | `/api/v1/assistant/chat/` | AI chat (optional) |
 
 Lifecycle endpoints (confirm, cancel, void) are documented in [Inventory & orders](domain/inventory-and-orders.md).

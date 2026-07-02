@@ -142,6 +142,7 @@ CANCELLED ◄──────── CANCELLED
 
 | Action  | Endpoint                               | Effect                                                              |
 | ------- | -------------------------------------- | ------------------------------------------------------------------- |
+| List    | `GET /api/v1/orders/purchase-orders/`  | Paginated list; optional `?status=DRAFT\|CONFIRMED\|CANCELLED` (invalid → 400) |
 | Create  | `POST /api/v1/orders/purchase-orders/` | `DRAFT` order + line items (`items_data`)                           |
 | Confirm | `POST …/purchase-orders/{id}/confirm/` | `CONFIRMED`; one `Stock` batch + `RECEIPT` per line                 |
 | Cancel  | `POST …/purchase-orders/{id}/cancel/`  | See rules below                                                     |
@@ -169,6 +170,7 @@ Same status enum as purchase orders: `DRAFT` → `CONFIRMED` / `CANCELLED`.
 
 | Action  | Endpoint                            | Effect                                                   |
 | ------- | ----------------------------------- | -------------------------------------------------------- |
+| List    | `GET /api/v1/orders/sales-orders/`  | Paginated list; optional `?status=DRAFT\|CONFIRMED\|CANCELLED` (invalid → 400) |
 | Create  | `POST /api/v1/orders/sales-orders/` | `DRAFT` + lines (`product_id`, `quantity`, `unit_price`) |
 | Confirm | `POST …/sales-orders/{id}/confirm/` | Deducts stock; see allocation below                      |
 | Cancel  | `POST …/sales-orders/{id}/cancel/`  | Reverses `SALE` rows with matching `RETURN` if confirmed |
@@ -204,7 +206,7 @@ Strategy is chosen per confirm request; it is not stored on the order. Batches w
 
 ## Draft orders
 
-Draft purchase and sales orders are created in the UI or API with one or more line items. From draft you can:
+Draft purchase and sales orders are created in the UI or API with one or more line items. Order list pages support filtering by status via the API (`?status=`) and URL (`/orders/purchases?status=draft`, `/orders/sales?status=draft`). The `?orderId=` query param can be combined with `?status=` to open the detail modal on a filtered list. From draft you can:
 
 - **Confirm** — apply stock effects (receipt for PO, deduction for SO).
 - **Cancel** — mark cancelled; no stock change while still draft.

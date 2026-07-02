@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Container,
   Group,
-  Title,
   Button,
   Table,
   Badge,
@@ -39,6 +38,7 @@ import type { Product, ProductListFilters } from '@/api/inventory'
 import { getApiErrorMessage } from '@/api/errors'
 import ProductFormModal from '@/components/inventory/ProductFormModal'
 import StockDrawer from '@/components/inventory/StockDrawer'
+import { PageTitle } from '@/components/layout/PageTitle'
 
 const UNIT_FILTER_OPTIONS = [
   { value: 'KG', label: 'Kilogram (KG)' },
@@ -230,8 +230,11 @@ export default function ProductListPage() {
 
   return (
     <Container size="xl" p={0}>
-      <Group justify="space-between" mb="lg">
-        <Title order={2}>Products</Title>
+      <Group justify="space-between" align="baseline" mb="lg" wrap="wrap">
+        <PageTitle
+          title="Products"
+          subtitle="catalog, stock levels, and units of measure"
+        />
         <Button
           leftSection={<IconPlus size={16} />}
           color="green"

@@ -2,33 +2,27 @@ import { useState } from 'react'
 import { Table, Badge, Button, Group, Text, ActionIcon, Loader, Center, Tooltip, Box } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconCheck, IconX } from '@tabler/icons-react'
-import { useDisclosure } from '@mantine/hooks'
 import { usePurchaseOrders, useConfirmPurchaseOrder, useCancelPurchaseOrder } from '@/api/orders'
 import type { OrderListFilters, PurchaseOrder } from '@/api/orders'
 import { getApiErrorMessage } from '@/api/errors'
 import { formatOrderMoney, getPurchaseOrderCancelDescription, getPurchaseOrderCancelTooltip, orderStatusColor, sumLineTotals, type OrderStatusFilter } from '@/utils/orders'
 import { OrderActionConfirmModal } from '@/components/orders/OrderActionConfirmModal'
-import { OrderStatusFilterSelect } from '@/components/orders/OrderStatusFilterSelect'
 import { OrderTableTitleCell, ORDER_NAME_COLUMN_MAX_WIDTH } from '@/components/orders/OrderTableTitleCell'
-import { PurchaseOrderDrawer } from '@/components/orders/PurchaseOrderDrawer'
 
 interface PurchaseOrderTableProps {
   listFilters: OrderListFilters
   statusFilter: OrderStatusFilter
-  onStatusFilterChange: (value: OrderStatusFilter) => void
   onViewOrder?: (order: PurchaseOrder) => void
 }
 
 export function PurchaseOrderTable({
   listFilters,
   statusFilter,
-  onStatusFilterChange,
   onViewOrder,
 }: PurchaseOrderTableProps) {
   const { data: ordersData, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = usePurchaseOrders(listFilters)
   const confirmMutation = useConfirmPurchaseOrder()
   const cancelMutation = useCancelPurchaseOrder()
-  const [opened, { open, close }] = useDisclosure(false)
   const [actionOrder, setActionOrder] = useState<{
     id: number
     action: 'confirm' | 'cancel'
@@ -122,14 +116,6 @@ export function PurchaseOrderTable({
 
   return (
     <>
-      <Group justify="space-between" mb="md" wrap="wrap">
-        <Group gap="md" wrap="wrap">
-          <Text size="lg" fw={500}>Inbound Shipments</Text>
-          <OrderStatusFilterSelect value={statusFilter} onChange={onStatusFilterChange} />
-        </Group>
-        <Button onClick={open}>Create Purchase Order</Button>
-      </Group>
-
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -166,8 +152,6 @@ export function PurchaseOrderTable({
           </Button>
         </Center>
       )}
-
-      <PurchaseOrderDrawer opened={opened} onClose={close} />
 
       <OrderActionConfirmModal
         opened={!!actionOrder}
