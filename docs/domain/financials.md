@@ -123,6 +123,8 @@ Purchase 100 units at **$1**/unit ($100 total cost). Sell all 100 at **$10**/uni
 | Gross margin (`margin`) | **90%** |
 | Markup on cost (`markup_on_cost`) | **900%** |
 
+> This is the same scenario from the challenge brief (buy at $1, sell at $10). The API surfaces both the **gross margin** (`margin` = 90%) and the **markup on cost** (`markup_on_cost` = 900%) so users can choose the profitability view that fits their reporting needs.
+
 
 ## Inventory value
 

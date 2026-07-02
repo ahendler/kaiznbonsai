@@ -10,6 +10,7 @@ Inventory management for Food & Beverage CPG brands — products, stock batches,
 ### Demo account (seeded via github workflow)
 
 Email: `demo@example.com`
+
 Password: Shared via email
 
 ---
@@ -32,7 +33,8 @@ Seed demo data locally:
 ```bash
 docker compose exec backend python manage.py generate_seed_data
 ```
-
+Email: `demo@example.com`
+Password: `Password123!`
 
 ---
 
