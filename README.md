@@ -10,6 +10,7 @@ Inventory management for Food & Beverage CPG brands — products, stock batches,
 ### Demo account (seeded via github workflow)
 
 Email: `demo@example.com`
+
 Password: Shared via email
 
 ---

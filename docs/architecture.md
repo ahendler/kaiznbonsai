@@ -23,8 +23,8 @@ graph LR
     end
 
     Browser --> CF
-    CF -->|"/api/*", "/admin/*"| EB
-    CF -->|"/*"| S3
+    CF -->|/api/* and /admin/*| EB
+    CF -->|/*| S3
     EB --> Django
     Django --> PG
 ```
