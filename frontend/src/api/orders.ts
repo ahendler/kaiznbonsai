@@ -73,10 +73,19 @@ export interface SalesOrderInput {
   items_data: SalesOrderItemInput[];
 }
 
+export interface OrderListFilters {
+  status?: OrderStatus;
+}
+
 // API CALLS
 const orderApi = {
-  getPurchaseOrders: async (cursor: string | null = null): Promise<PaginatedResponse<PurchaseOrder>> => {
-    const params = cursor ? { cursor } : {};
+  getPurchaseOrders: async (
+    cursor: string | null = null,
+    filters: OrderListFilters = {},
+  ): Promise<PaginatedResponse<PurchaseOrder>> => {
+    const params: Record<string, string> = {};
+    if (cursor) params.cursor = cursor;
+    if (filters.status) params.status = filters.status;
     const response = await api.get('/orders/purchase-orders/', { params });
     return response.data;
   },
@@ -93,8 +102,13 @@ const orderApi = {
     return response.data;
   },
 
-  getSalesOrders: async (cursor: string | null = null): Promise<PaginatedResponse<SalesOrder>> => {
-    const params = cursor ? { cursor } : {};
+  getSalesOrders: async (
+    cursor: string | null = null,
+    filters: OrderListFilters = {},
+  ): Promise<PaginatedResponse<SalesOrder>> => {
+    const params: Record<string, string> = {};
+    if (cursor) params.cursor = cursor;
+    if (filters.status) params.status = filters.status;
     const response = await api.get('/orders/sales-orders/', { params });
     return response.data;
   },
@@ -131,10 +145,11 @@ export const getPurchaseOrder = orderApi.getPurchaseOrder;
 export const getSalesOrder = orderApi.getSalesOrder;
 
 // HOOKS
-export const usePurchaseOrders = () => {
+export const usePurchaseOrders = (filters: OrderListFilters = {}) => {
   return useInfiniteQuery({
-    queryKey: ['purchase-orders'],
-    queryFn: ({ pageParam }) => orderApi.getPurchaseOrders(pageParam as string | null),
+    queryKey: ['purchase-orders', filters],
+    queryFn: ({ pageParam }) =>
+      orderApi.getPurchaseOrders(pageParam as string | null, filters),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null;
@@ -178,10 +193,11 @@ export const useCancelPurchaseOrder = () => {
   });
 };
 
-export const useSalesOrders = () => {
+export const useSalesOrders = (filters: OrderListFilters = {}) => {
   return useInfiniteQuery({
-    queryKey: ['sales-orders'],
-    queryFn: ({ pageParam }) => orderApi.getSalesOrders(pageParam as string | null),
+    queryKey: ['sales-orders', filters],
+    queryFn: ({ pageParam }) =>
+      orderApi.getSalesOrders(pageParam as string | null, filters),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => {
       if (!lastPage.next) return null;

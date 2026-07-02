@@ -1,10 +1,18 @@
+import { useMemo } from 'react'
 import { Container, Title } from '@mantine/core'
 import { useSearchParams } from 'react-router-dom'
 import { PurchaseOrderTable } from '@/components/orders/PurchaseOrderTable'
 import { SalesOrderTable } from '@/components/orders/SalesOrderTable'
 import OrderDetailModal from '@/components/orders/OrderDetailModal'
 import { usePurchaseOrder, useSalesOrder } from '@/api/orders'
-import { parseOrderId, type OrderKind } from '@/utils/orders'
+import type { OrderListFilters } from '@/api/orders'
+import {
+  orderStatusSlugToApi,
+  parseOrderId,
+  parseOrderStatusFilter,
+  type OrderKind,
+  type OrderStatusFilter,
+} from '@/utils/orders'
 
 interface Props {
   kind: OrderKind
@@ -14,6 +22,12 @@ interface Props {
 export default function OrderListPage({ kind, title }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const orderId = parseOrderId(searchParams.get('orderId'))
+  const statusFilter = parseOrderStatusFilter(searchParams.get('status'))
+
+  const listFilters = useMemo((): OrderListFilters => {
+    if (statusFilter === 'all') return {}
+    return { status: orderStatusSlugToApi(statusFilter) }
+  }, [statusFilter])
 
   const salesOrderId = kind === 'sales' ? orderId : null
   const purchaseOrderId = kind === 'purchases' ? orderId : null
@@ -30,12 +44,41 @@ export default function OrderListPage({ kind, title }: Props) {
     isError: purchaseOrderError,
   } = usePurchaseOrder(purchaseOrderId)
 
+  const setStatusFilter = (filter: OrderStatusFilter) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (filter === 'all') {
+          next.delete('status')
+        } else {
+          next.set('status', filter)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
+
   const closeOrderModal = () => {
-    setSearchParams({}, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('orderId')
+        return next
+      },
+      { replace: true },
+    )
   }
 
   const openOrder = (id: number) => {
-    setSearchParams({ orderId: String(id) }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('orderId', String(id))
+        return next
+      },
+      { replace: true },
+    )
   }
 
   return (
@@ -45,9 +88,19 @@ export default function OrderListPage({ kind, title }: Props) {
       </Title>
 
       {kind === 'purchases' ? (
-        <PurchaseOrderTable onViewOrder={(order) => openOrder(order.id)} />
+        <PurchaseOrderTable
+          listFilters={listFilters}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          onViewOrder={(order) => openOrder(order.id)}
+        />
       ) : (
-        <SalesOrderTable onViewOrder={(order) => openOrder(order.id)} />
+        <SalesOrderTable
+          listFilters={listFilters}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          onViewOrder={(order) => openOrder(order.id)}
+        />
       )}
 
       {kind === 'sales' && (

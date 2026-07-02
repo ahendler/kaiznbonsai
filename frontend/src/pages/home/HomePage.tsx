@@ -35,7 +35,7 @@ import { useOverallFinancials, listProductFinancials } from '@/api/financials'
 import { listProducts } from '@/api/inventory'
 import { usePurchaseOrders, useSalesOrders } from '@/api/orders'
 import { buildOrderPath } from '@/utils/orders'
-import { formatCurrency, formatMarginPercent } from '@/utils/financials'
+import { formatCurrency } from '@/utils/financials'
 import {
   DEFAULT_FINANCIAL_PERIOD,
   formatFinancialPeriodLabel,
@@ -55,7 +55,7 @@ import {
 
 const RECENT_ACTIVITY_LIMIT = 10
 
-type AttentionKind = 'negative_margin' | 'out_of_stock' | 'draft_purchase' | 'draft_sales'
+type AttentionKind = 'out_of_stock' | 'draft_purchase' | 'draft_sales'
 
 interface AttentionItem {
   key: string
@@ -72,7 +72,6 @@ const ATTENTION_KIND_META: Record<
   AttentionKind,
   { color: string; icon: typeof IconCash; badge: string }
 > = {
-  negative_margin: { color: 'red', icon: IconTrendingDown, badge: 'Loss maker' },
   out_of_stock: { color: 'orange', icon: IconPackage, badge: 'Stockout' },
   draft_purchase: { color: 'yellow', icon: IconTruckDelivery, badge: 'Purchase' },
   draft_sales: { color: 'blue', icon: IconCash, badge: 'Sales' },
@@ -91,12 +90,6 @@ export default function HomePage() {
     enabled: periodReady,
   })
 
-  const { data: negativeMarginProducts, isLoading: negativeLoading } = useQuery({
-    queryKey: ['home', 'negative-margin', periodParams],
-    queryFn: () => listProductFinancials(null, { ...periodParams, margin_band: 'negative' }),
-    enabled: periodReady,
-  })
-
   const { data: movementProducts, isLoading: movementLoading } = useQuery({
     queryKey: ['home', 'movement-products', periodParams],
     queryFn: () => listProductFinancials(null, { ...periodParams, activity: 'movement' }),
@@ -109,8 +102,8 @@ export default function HomePage() {
     enabled: periodReady,
   })
 
-  const { data: purchaseOrders, isLoading: poLoading } = usePurchaseOrders()
-  const { data: salesOrders, isLoading: soLoading } = useSalesOrders()
+  const { data: purchaseOrders, isLoading: poLoading } = usePurchaseOrders({ status: 'DRAFT' })
+  const { data: salesOrders, isLoading: soLoading } = useSalesOrders({ status: 'DRAFT' })
 
   const { data: recentMovements, isLoading: movementsLoading } = useQuery({
     queryKey: ['home', 'recent-movements', periodParams],
@@ -127,32 +120,17 @@ export default function HomePage() {
   }, [movementProducts, outOfStockProducts])
 
   const draftPurchaseOrders = useMemo(
-    () =>
-      purchaseOrders?.pages.flatMap((page) => page.results).filter((o) => o.status === 'DRAFT') ??
-      [],
+    () => purchaseOrders?.pages.flatMap((page) => page.results) ?? [],
     [purchaseOrders],
   )
 
   const draftSalesOrders = useMemo(
-    () =>
-      salesOrders?.pages.flatMap((page) => page.results).filter((o) => o.status === 'DRAFT') ?? [],
+    () => salesOrders?.pages.flatMap((page) => page.results) ?? [],
     [salesOrders],
   )
 
   const attentionItems = useMemo((): AttentionItem[] => {
     const items: AttentionItem[] = []
-
-    for (const product of negativeMarginProducts?.results.slice(0, 5) ?? []) {
-      const meta = ATTENTION_KIND_META.negative_margin
-      items.push({
-        key: `loss-${product.id}`,
-        kind: 'negative_margin',
-        title: product.name,
-        description: `${formatMarginPercent(product.margin)} gross margin this period`,
-        to: '/financials',
-        ...meta,
-      })
-    }
 
     for (const product of outOfStockWithSales) {
       const meta = ATTENTION_KIND_META.out_of_stock
@@ -174,7 +152,7 @@ export default function HomePage() {
         kind: 'draft_purchase',
         title: `${count} draft purchase order${count === 1 ? '' : 's'}`,
         description: 'Waiting to be confirmed and received into stock',
-        to: buildOrderPath('purchases'),
+        to: buildOrderPath('purchases', undefined, { status: 'draft' }),
         ...meta,
       })
     }
@@ -187,24 +165,19 @@ export default function HomePage() {
         kind: 'draft_sales',
         title: `${count} draft sales order${count === 1 ? '' : 's'}`,
         description: 'Waiting to be confirmed and fulfilled',
-        to: buildOrderPath('sales'),
+        to: buildOrderPath('sales', undefined, { status: 'draft' }),
         ...meta,
       })
     }
 
     return items
-  }, [
-    negativeMarginProducts,
-    outOfStockWithSales,
-    draftPurchaseOrders.length,
-    draftSalesOrders.length,
-  ])
+  }, [outOfStockWithSales, draftPurchaseOrders.length, draftSalesOrders.length])
 
   const movements = recentMovements?.results.slice(0, RECENT_ACTIVITY_LIMIT) ?? []
 
   const summaryLoading = periodReady && overallLoading
   const attentionLoading =
-    periodReady && (negativeLoading || movementLoading || oosLoading || poLoading || soLoading)
+    periodReady && (movementLoading || oosLoading || poLoading || soLoading)
 
   if (summaryLoading && !overall) {
     return (
