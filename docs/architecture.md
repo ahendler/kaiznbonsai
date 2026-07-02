@@ -32,7 +32,7 @@ graph LR
 | Layer | Technology |
 |-------|------------|
 | Frontend | React 18, TypeScript, Vite, Mantine, Tailwind, TanStack Query |
-| Backend | Django 5, Django REST Framework, PostgreSQL |
+| Backend | Django 6, Django REST Framework, PostgreSQL |
 | Auth | JWT access token (JSON) + httpOnly refresh cookie |
 | API docs | drf-spectacular (Swagger `/api/docs/`, ReDoc `/api/redoc/`) |
 | Infrastructure | AWS CDK — CloudFront, S3, Elastic Beanstalk, ECR |

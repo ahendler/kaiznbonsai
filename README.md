@@ -32,7 +32,8 @@ Seed demo data locally:
 ```bash
 docker compose exec backend python manage.py generate_seed_data
 ```
-
+Email: `demo@example.com`
+Password: `Password123!`
 
 ---
 
